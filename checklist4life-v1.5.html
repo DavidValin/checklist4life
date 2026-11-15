@@ -1392,6 +1392,45 @@ body {
 .lang__option:hover { background: var(--surface-2); }
 .lang__option:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .lang__option[aria-checked="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* ==========================================================================
+   Block: tour (first-run tutorial)
+   ========================================================================== */
+.toolbar__help-label { display: none; }
+.toolbar--compact.toolbar--open .toolbar__help { width: auto; height: auto; padding: 8px 14px; gap: 6px; }
+.toolbar--compact.toolbar--open .toolbar__help-label { display: inline; }
+.tour { position: fixed; inset: 0; z-index: 40; }
+.tour__spot {
+  position: fixed;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(20, 18, 15, .55);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  pointer-events: none;
+  transition: top .25s ease, left .25s ease, width .25s ease, height .25s ease;
+}
+.tour__spot--none { top: 50%; left: 50%; width: 0; height: 0; outline: 0; }
+.tour__bubble {
+  position: fixed;
+  width: min(340px, calc(100vw - 24px));
+  padding: 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, .25);
+  transition: top .25s ease, left .25s ease;
+}
+.tour__count { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.tour__title { margin: 0 0 6px; font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+.tour__text { margin: 0 0 14px; font-size: 14px; color: var(--muted); }
+.tour__nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tour__spacer { flex: 1; }
+.tour__skip { padding-left: 0; }
+@media (prefers-reduced-motion: reduce) { .tour__spot, .tour__bubble { transition: none; } }
+/* while touring, buttons that normally appear only on hover stay visible */
+:root.tour-on .stage__actions,
+:root.tour-on .item__action:not(:disabled) { opacity: 1; }
 </style>
 </head>
 <body>
@@ -1443,6 +1482,10 @@ body {
       </label>
     </div>
     <div class="toolbar__group toolbar__group--end">
+      <button type="button" class="button button--icon toolbar__help" data-action="start-tour" id="helpButton" title="Tutorial" aria-label="Tutorial" data-i18n-attr="title:tutorial;aria-label:tutorial">
+        <svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+        <span class="toolbar__help-label" data-i18n="tutorial">Tutorial</span>
+      </button>
       <div class="lang" id="lang">
         <button type="button" class="button lang__toggle" data-action="toggle-lang" id="langToggle" aria-haspopup="true" aria-expanded="false" aria-controls="langPanel">
           <span class="lang__flag" id="langFlag" aria-hidden="true"></span>
@@ -1521,6 +1564,22 @@ body {
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- Tutorial (guided tour): spotlight on the current target + explanation bubble -->
+<div class="tour" id="tour" hidden>
+  <div class="tour__spot tour__spot--none" id="tourSpot"></div>
+  <div class="tour__bubble" id="tourBubble" role="dialog" aria-modal="true" aria-labelledby="tourTitle" aria-describedby="tourText">
+    <p class="tour__count" id="tourCount"></p>
+    <h2 class="tour__title" id="tourTitle"></h2>
+    <p class="tour__text" id="tourText"></p>
+    <div class="tour__nav">
+      <button type="button" class="button button--ghost tour__skip" id="tourSkip"></button>
+      <span class="tour__spacer"></span>
+      <button type="button" class="button" id="tourBack"></button>
+      <button type="button" class="button button--primary" id="tourNext"></button>
+    </div>
+  </div>
+</div>
 
 <!-- Filled with the Time / Cost Report when printing (the only thing printed) -->
 <div class="print-root" id="printRoot"></div>
@@ -1669,7 +1728,7 @@ body {
       checklist_deleted: 'Checklist deleted',
       delete_all: 'Delete all',
       delete_all_q: 'Delete all checklists?',
-      delete_all_msg: 'This removes {checklists} and all their attachments from this browser permanently. You will start with an empty checklist.',
+      delete_all_msg: 'This removes {checklists} and all their attachments from this browser permanently. You will start again with the starter checklist.',
       all_deleted: 'All checklists deleted',
       id_copied: 'Checklist ID copied',
       id_is: 'Checklist ID: {id}',
@@ -1758,6 +1817,40 @@ body {
       report: 'Time / Cost Report',
       report_empty: 'No time or costs logged yet. Log time or add a cost on an item to see the report.',
       print_overview: 'Print overview',
+      tour_step: '{n} of {total}',
+      tour_next: 'Next',
+      tour_back: 'Back',
+      tour_skip: 'Skip tutorial',
+      tour_done: 'Finish',
+      tutorial: 'Tutorial',
+      tour_welcome_t: 'Welcome to checklist4life',
+      tour_welcome: 'A quick tour of the basics, about one minute. You can skip it and replay it later with the ? button.',
+      tour_checklist_t: 'Your checklist',
+      tour_checklist: 'Click the title or the description to edit them. Everything is saved automatically in this browser.',
+      tour_stage_t: 'Stages',
+      tour_stage: 'A checklist is split into stages. Each stage has a title, an optional description and its own items.',
+      tour_stage_actions_t: 'Manage a stage',
+      tour_stage_actions: 'Use these buttons to move the stage up or down, edit it (title, description, number of columns), delete it, or add an item with +.',
+      tour_add_stage_t: 'Add stages',
+      tour_add_stage: 'Add as many stages as you need. New stages are added at the end of the checklist.',
+      tour_check_t: 'Check items',
+      tour_check: 'Tick the box, or click the title, to mark an item as done. Click again to undo it.',
+      tour_item_actions_t: 'Item tools',
+      tour_item_actions: 'Move the item, add a note, log time, add a cost, attach files (or drop them on the item), edit or delete it.',
+      tour_time_t: 'Time and costs',
+      tour_time: 'Log time and costs per item. A cost can be linked to the time (e.g. hours × hourly rate) and every entry can be assigned to a person.',
+      tour_progress_t: 'Progress',
+      tour_progress: 'Progress, time and costs of the whole checklist and of each stage. Click a stage here to jump to it.',
+      tour_report_t: 'Report and printing',
+      tour_report: 'The Time / Cost Report shows totals per person, stage and type, with charts. Print overview prints the checklist on paper.',
+      tour_checklists_t: 'Several checklists',
+      tour_checklists: 'Create a new checklist, clone this one to reuse it as a template, or switch between your saved checklists.',
+      tour_display_t: 'Display',
+      tour_display: 'Show or hide descriptions, notes and attachments, and change the theme and the language.',
+      tour_backup_t: 'Backup and share',
+      tour_backup: 'Export checklists to a file (including attachments) and import them again, here or on another computer.',
+      tour_end_t: 'You are ready!',
+      tour_end: 'Replay this tour anytime with the ? button.',
       overview_subtitle: 'Choose what to include in the printed checklist',
       include_stage_descriptions: 'Include stage descriptions',
       include_item_descriptions: 'Include item descriptions',
@@ -1925,7 +2018,7 @@ body {
       checklist_deleted: 'Checklist eliminada',
       delete_all: 'Eliminar todo',
       delete_all_q: '¿Eliminar todas las checklists?',
-      delete_all_msg: 'Esto elimina de este navegador, de forma permanente, {checklists} y todos sus adjuntos. Empezarás con una checklist vacía.',
+      delete_all_msg: 'Esto elimina de este navegador, de forma permanente, {checklists} y todos sus adjuntos. Empezarás de nuevo con la checklist inicial.',
       all_deleted: 'Todas las checklists eliminadas',
       id_copied: 'ID de la checklist copiado',
       id_is: 'ID de la checklist: {id}',
@@ -2014,6 +2107,40 @@ body {
       report: 'Informe de tiempo / costes',
       report_empty: 'Aún no se ha registrado tiempo ni costes. Registra tiempo o añade un coste en un elemento para ver el informe.',
       print_overview: 'Imprimir resumen',
+      tour_step: '{n} de {total}',
+      tour_next: 'Siguiente',
+      tour_back: 'Atrás',
+      tour_skip: 'Saltar tutorial',
+      tour_done: 'Terminar',
+      tutorial: 'Tutorial',
+      tour_welcome_t: 'Bienvenido a checklist4life',
+      tour_welcome: 'Un recorrido rápido por lo básico, de un minuto. Puedes saltarlo y volver a verlo más tarde con el botón ?.',
+      tour_checklist_t: 'Tu checklist',
+      tour_checklist: 'Haz clic en el título o en la descripción para editarlos. Todo se guarda automáticamente en este navegador.',
+      tour_stage_t: 'Etapas',
+      tour_stage: 'Una checklist se divide en etapas. Cada etapa tiene un título, una descripción opcional y sus propios elementos.',
+      tour_stage_actions_t: 'Gestionar una etapa',
+      tour_stage_actions: 'Con estos botones puedes subir o bajar la etapa, editarla (título, descripción, número de columnas), eliminarla o añadir un elemento con +.',
+      tour_add_stage_t: 'Añadir etapas',
+      tour_add_stage: 'Añade todas las etapas que necesites. Las nuevas etapas se añaden al final de la checklist.',
+      tour_check_t: 'Marcar elementos',
+      tour_check: 'Marca la casilla, o haz clic en el título, para dar un elemento por hecho. Vuelve a hacer clic para deshacerlo.',
+      tour_item_actions_t: 'Herramientas del elemento',
+      tour_item_actions: 'Mueve el elemento, añade una nota, registra tiempo, añade un coste, adjunta archivos (o suéltalos sobre el elemento), edítalo o elimínalo.',
+      tour_time_t: 'Tiempo y costes',
+      tour_time: 'Registra tiempo y costes por elemento. Un coste puede vincularse al tiempo (p. ej. horas × tarifa por hora) y cada entrada puede asignarse a una persona.',
+      tour_progress_t: 'Progreso',
+      tour_progress: 'Progreso, tiempo y costes de toda la checklist y de cada etapa. Haz clic aquí en una etapa para ir a ella.',
+      tour_report_t: 'Informe e impresión',
+      tour_report: 'El informe de tiempo / costes muestra los totales por persona, etapa y tipo, con gráficos. Imprimir resumen imprime la checklist en papel.',
+      tour_checklists_t: 'Varias checklists',
+      tour_checklists: 'Crea una checklist nueva, clona esta para reutilizarla como plantilla o cambia entre tus checklists guardadas.',
+      tour_display_t: 'Visualización',
+      tour_display: 'Muestra u oculta descripciones, notas y adjuntos, y cambia el tema y el idioma.',
+      tour_backup_t: 'Copia de seguridad',
+      tour_backup: 'Exporta checklists a un archivo (con sus adjuntos) e impórtalas de nuevo, aquí o en otro ordenador.',
+      tour_end_t: '¡Listo!',
+      tour_end: 'Vuelve a ver este recorrido cuando quieras con el botón ?.',
       overview_subtitle: 'Elige qué incluir en la checklist impresa',
       include_stage_descriptions: 'Incluir descripciones de etapas',
       include_item_descriptions: 'Incluir descripciones de elementos',
@@ -2181,7 +2308,7 @@ body {
       checklist_deleted: 'Checkliste gelöscht',
       delete_all: 'Alle löschen',
       delete_all_q: 'Alle Checklisten löschen?',
-      delete_all_msg: 'Damit werden {checklists} samt allen Anhängen dauerhaft aus diesem Browser entfernt. Du beginnst mit einer leeren Checkliste.',
+      delete_all_msg: 'Damit werden {checklists} samt allen Anhängen dauerhaft aus diesem Browser entfernt. Du beginnst wieder mit der Start-Checkliste.',
       all_deleted: 'Alle Checklisten gelöscht',
       id_copied: 'Checklisten-ID kopiert',
       id_is: 'Checklisten-ID: {id}',
@@ -2270,6 +2397,40 @@ body {
       report: 'Zeit-/Kostenbericht',
       report_empty: 'Noch keine Zeit oder Kosten erfasst. Erfasse Zeit oder füge einem Eintrag Kosten hinzu, um den Bericht zu sehen.',
       print_overview: 'Übersicht drucken',
+      tour_step: '{n} von {total}',
+      tour_next: 'Weiter',
+      tour_back: 'Zurück',
+      tour_skip: 'Tutorial überspringen',
+      tour_done: 'Fertig',
+      tutorial: 'Tutorial',
+      tour_welcome_t: 'Willkommen bei checklist4life',
+      tour_welcome: 'Eine kurze Tour durch die Grundlagen, etwa eine Minute. Du kannst sie überspringen und später mit der ?-Schaltfläche erneut ansehen.',
+      tour_checklist_t: 'Deine Checkliste',
+      tour_checklist: 'Klicke auf den Titel oder die Beschreibung, um sie zu bearbeiten. Alles wird automatisch in diesem Browser gespeichert.',
+      tour_stage_t: 'Phasen',
+      tour_stage: 'Eine Checkliste ist in Phasen unterteilt. Jede Phase hat einen Titel, eine optionale Beschreibung und eigene Einträge.',
+      tour_stage_actions_t: 'Eine Phase verwalten',
+      tour_stage_actions: 'Mit diesen Schaltflächen verschiebst du die Phase nach oben oder unten, bearbeitest sie (Titel, Beschreibung, Spaltenzahl), löschst sie oder fügst mit + einen Eintrag hinzu.',
+      tour_add_stage_t: 'Phasen hinzufügen',
+      tour_add_stage: 'Füge so viele Phasen hinzu, wie du brauchst. Neue Phasen kommen ans Ende der Checkliste.',
+      tour_check_t: 'Einträge abhaken',
+      tour_check: 'Hake das Kästchen ab oder klicke auf den Titel, um einen Eintrag als erledigt zu markieren. Ein weiterer Klick macht es rückgängig.',
+      tour_item_actions_t: 'Eintragswerkzeuge',
+      tour_item_actions: 'Verschiebe den Eintrag, füge eine Notiz hinzu, erfasse Zeit, füge Kosten hinzu, hänge Dateien an (oder ziehe sie auf den Eintrag), bearbeite oder lösche ihn.',
+      tour_time_t: 'Zeit und Kosten',
+      tour_time: 'Erfasse Zeit und Kosten pro Eintrag. Kosten können mit der Zeit verknüpft werden (z. B. Stunden × Stundensatz), und jeder Eintrag kann einer Person zugeordnet werden.',
+      tour_progress_t: 'Fortschritt',
+      tour_progress: 'Fortschritt, Zeit und Kosten der ganzen Checkliste und jeder Phase. Klicke hier auf eine Phase, um zu ihr zu springen.',
+      tour_report_t: 'Bericht und Drucken',
+      tour_report: 'Der Zeit-/Kostenbericht zeigt die Summen nach Person, Phase und Art, mit Diagrammen. „Übersicht drucken“ druckt die Checkliste auf Papier.',
+      tour_checklists_t: 'Mehrere Checklisten',
+      tour_checklists: 'Erstelle eine neue Checkliste, klone diese, um sie als Vorlage zu nutzen, oder wechsle zwischen deinen gespeicherten Checklisten.',
+      tour_display_t: 'Anzeige',
+      tour_display: 'Blende Beschreibungen, Notizen und Anhänge ein oder aus und ändere Design und Sprache.',
+      tour_backup_t: 'Sichern und teilen',
+      tour_backup: 'Exportiere Checklisten in eine Datei (mit Anhängen) und importiere sie wieder, hier oder auf einem anderen Computer.',
+      tour_end_t: 'Alles bereit!',
+      tour_end: 'Sieh dir diese Tour jederzeit mit der ?-Schaltfläche erneut an.',
       overview_subtitle: 'Wähle, was die gedruckte Checkliste enthalten soll',
       include_stage_descriptions: 'Phasenbeschreibungen einbeziehen',
       include_item_descriptions: 'Eintragsbeschreibungen einbeziehen',
@@ -2437,7 +2598,7 @@ body {
       checklist_deleted: 'Checklist supprimée',
       delete_all: 'Tout supprimer',
       delete_all_q: 'Supprimer toutes les checklists ?',
-      delete_all_msg: 'Cela supprime définitivement de ce navigateur {checklists} et toutes leurs pièces jointes. Vous repartirez d’une checklist vide.',
+      delete_all_msg: 'Cela supprime définitivement de ce navigateur {checklists} et toutes leurs pièces jointes. Vous repartirez de la checklist de départ.',
       all_deleted: 'Toutes les checklists ont été supprimées',
       id_copied: 'ID de la checklist copié',
       id_is: 'ID de la checklist : {id}',
@@ -2526,6 +2687,40 @@ body {
       report: 'Rapport temps / coûts',
       report_empty: 'Aucun temps ni coût saisi pour l’instant. Saisissez du temps ou ajoutez un coût sur un élément pour voir le rapport.',
       print_overview: 'Imprimer l’aperçu',
+      tour_step: '{n} sur {total}',
+      tour_next: 'Suivant',
+      tour_back: 'Retour',
+      tour_skip: 'Passer le tutoriel',
+      tour_done: 'Terminer',
+      tutorial: 'Tutoriel',
+      tour_welcome_t: 'Bienvenue dans checklist4life',
+      tour_welcome: 'Une visite rapide des bases, environ une minute. Vous pouvez la passer et la revoir plus tard avec le bouton ?.',
+      tour_checklist_t: 'Votre checklist',
+      tour_checklist: 'Cliquez sur le titre ou la description pour les modifier. Tout est enregistré automatiquement dans ce navigateur.',
+      tour_stage_t: 'Étapes',
+      tour_stage: 'Une checklist est divisée en étapes. Chaque étape a un titre, une description facultative et ses propres éléments.',
+      tour_stage_actions_t: 'Gérer une étape',
+      tour_stage_actions: 'Ces boutons permettent de monter ou descendre l’étape, de la modifier (titre, description, nombre de colonnes), de la supprimer ou d’ajouter un élément avec +.',
+      tour_add_stage_t: 'Ajouter des étapes',
+      tour_add_stage: 'Ajoutez autant d’étapes que nécessaire. Les nouvelles étapes sont ajoutées à la fin de la checklist.',
+      tour_check_t: 'Cocher les éléments',
+      tour_check: 'Cochez la case, ou cliquez sur le titre, pour marquer un élément comme fait. Cliquez à nouveau pour annuler.',
+      tour_item_actions_t: 'Outils de l’élément',
+      tour_item_actions: 'Déplacez l’élément, ajoutez une note, saisissez du temps, ajoutez un coût, joignez des fichiers (ou déposez-les sur l’élément), modifiez-le ou supprimez-le.',
+      tour_time_t: 'Temps et coûts',
+      tour_time: 'Saisissez le temps et les coûts par élément. Un coût peut être lié au temps (p. ex. heures × taux horaire) et chaque saisie peut être attribuée à une personne.',
+      tour_progress_t: 'Progression',
+      tour_progress: 'Progression, temps et coûts de toute la checklist et de chaque étape. Cliquez ici sur une étape pour y aller.',
+      tour_report_t: 'Rapport et impression',
+      tour_report: 'Le rapport temps / coûts affiche les totaux par personne, étape et type, avec des graphiques. Imprimer l’aperçu imprime la checklist sur papier.',
+      tour_checklists_t: 'Plusieurs checklists',
+      tour_checklists: 'Créez une nouvelle checklist, dupliquez celle-ci pour la réutiliser comme modèle, ou passez d’une checklist enregistrée à l’autre.',
+      tour_display_t: 'Affichage',
+      tour_display: 'Affichez ou masquez les descriptions, les notes et les pièces jointes, et changez le thème et la langue.',
+      tour_backup_t: 'Sauvegarder et partager',
+      tour_backup: 'Exportez des checklists dans un fichier (avec les pièces jointes) et importez-les à nouveau, ici ou sur un autre ordinateur.',
+      tour_end_t: 'C’est parti !',
+      tour_end: 'Revoyez cette visite à tout moment avec le bouton ?.',
       overview_subtitle: 'Choisissez ce qu’il faut inclure dans la checklist imprimée',
       include_stage_descriptions: 'Inclure les descriptions des étapes',
       include_item_descriptions: 'Inclure les descriptions des éléments',
@@ -2693,7 +2888,7 @@ body {
       checklist_deleted: 'Checklist verwijderd',
       delete_all: 'Alles verwijderen',
       delete_all_q: 'Alle checklists verwijderen?',
-      delete_all_msg: 'Hiermee worden {checklists} en al hun bijlagen permanent uit deze browser verwijderd. Je begint met een lege checklist.',
+      delete_all_msg: 'Hiermee worden {checklists} en al hun bijlagen permanent uit deze browser verwijderd. Je begint opnieuw met de startchecklist.',
       all_deleted: 'Alle checklists verwijderd',
       id_copied: 'Checklist-ID gekopieerd',
       id_is: 'Checklist-ID: {id}',
@@ -2782,6 +2977,40 @@ body {
       report: 'Tijd-/kostenrapport',
       report_empty: 'Nog geen tijd of kosten geregistreerd. Registreer tijd of voeg kosten toe aan een item om het rapport te zien.',
       print_overview: 'Overzicht afdrukken',
+      tour_step: '{n} van {total}',
+      tour_next: 'Volgende',
+      tour_back: 'Terug',
+      tour_skip: 'Tutorial overslaan',
+      tour_done: 'Klaar',
+      tutorial: 'Tutorial',
+      tour_welcome_t: 'Welkom bij checklist4life',
+      tour_welcome: 'Een korte rondleiding langs de basis, ongeveer een minuut. Je kunt hem overslaan en later opnieuw bekijken met de ?-knop.',
+      tour_checklist_t: 'Je checklist',
+      tour_checklist: 'Klik op de titel of de beschrijving om ze te bewerken. Alles wordt automatisch in deze browser opgeslagen.',
+      tour_stage_t: 'Fasen',
+      tour_stage: 'Een checklist is verdeeld in fasen. Elke fase heeft een titel, een optionele beschrijving en eigen items.',
+      tour_stage_actions_t: 'Een fase beheren',
+      tour_stage_actions: 'Met deze knoppen verplaats je de fase omhoog of omlaag, bewerk je hem (titel, beschrijving, aantal kolommen), verwijder je hem of voeg je met + een item toe.',
+      tour_add_stage_t: 'Fasen toevoegen',
+      tour_add_stage: 'Voeg zoveel fasen toe als je nodig hebt. Nieuwe fasen komen aan het einde van de checklist.',
+      tour_check_t: 'Items afvinken',
+      tour_check: 'Vink het vakje aan, of klik op de titel, om een item als klaar te markeren. Klik nogmaals om het ongedaan te maken.',
+      tour_item_actions_t: 'Itemknoppen',
+      tour_item_actions: 'Verplaats het item, voeg een notitie toe, registreer tijd, voeg kosten toe, voeg bestanden toe (of sleep ze op het item), bewerk of verwijder het.',
+      tour_time_t: 'Tijd en kosten',
+      tour_time: 'Registreer tijd en kosten per item. Kosten kunnen aan de tijd gekoppeld worden (bijv. uren × uurtarief) en elke registratie kan aan een persoon worden toegewezen.',
+      tour_progress_t: 'Voortgang',
+      tour_progress: 'Voortgang, tijd en kosten van de hele checklist en van elke fase. Klik hier op een fase om ernaartoe te gaan.',
+      tour_report_t: 'Rapport en afdrukken',
+      tour_report: 'Het tijd-/kostenrapport toont totalen per persoon, fase en soort, met grafieken. Overzicht afdrukken drukt de checklist af op papier.',
+      tour_checklists_t: 'Meerdere checklists',
+      tour_checklists: 'Maak een nieuwe checklist, kloon deze om hem als sjabloon te hergebruiken, of wissel tussen je opgeslagen checklists.',
+      tour_display_t: 'Weergave',
+      tour_display: 'Toon of verberg beschrijvingen, notities en bijlagen, en wijzig het thema en de taal.',
+      tour_backup_t: 'Back-up en delen',
+      tour_backup: 'Exporteer checklists naar een bestand (inclusief bijlagen) en importeer ze weer, hier of op een andere computer.',
+      tour_end_t: 'Je bent er klaar voor!',
+      tour_end: 'Bekijk deze rondleiding altijd opnieuw met de ?-knop.',
       overview_subtitle: 'Kies wat er in de afgedrukte checklist komt',
       include_stage_descriptions: 'Fasebeschrijvingen opnemen',
       include_item_descriptions: 'Itembeschrijvingen opnemen',
@@ -2949,7 +3178,7 @@ body {
       checklist_deleted: '清单已删除',
       delete_all: '全部删除',
       delete_all_q: '删除所有清单？',
-      delete_all_msg: '这将从此浏览器中永久删除 {checklists}及其所有附件。你将从一个空清单开始。',
+      delete_all_msg: '这将从此浏览器中永久删除 {checklists}及其所有附件。你将重新从入门清单开始。',
       all_deleted: '所有清单已删除',
       id_copied: '清单 ID 已复制',
       id_is: '清单 ID：{id}',
@@ -3038,6 +3267,40 @@ body {
       report: '时间 / 费用报告',
       report_empty: '尚未记录时间或费用。在事项上记录时间或添加费用后即可查看报告。',
       print_overview: '打印概览',
+      tour_step: '第 {n} 步，共 {total} 步',
+      tour_next: '下一步',
+      tour_back: '上一步',
+      tour_skip: '跳过教程',
+      tour_done: '完成',
+      tutorial: '教程',
+      tour_welcome_t: '欢迎使用 checklist4life',
+      tour_welcome: '快速了解基本功能，大约一分钟。你可以跳过，之后用 ? 按钮再次观看。',
+      tour_checklist_t: '你的清单',
+      tour_checklist: '点击标题或描述即可编辑。所有内容都会自动保存在此浏览器中。',
+      tour_stage_t: '阶段',
+      tour_stage: '清单分为多个阶段。每个阶段都有标题、可选的描述和自己的事项。',
+      tour_stage_actions_t: '管理阶段',
+      tour_stage_actions: '用这些按钮上移或下移阶段、编辑阶段（标题、描述、列数）、删除阶段，或用 + 添加事项。',
+      tour_add_stage_t: '添加阶段',
+      tour_add_stage: '按需添加任意数量的阶段。新阶段会添加到清单末尾。',
+      tour_check_t: '勾选事项',
+      tour_check: '勾选复选框或点击标题，即可将事项标记为已完成。再次点击可撤销。',
+      tour_item_actions_t: '事项工具',
+      tour_item_actions: '移动事项、添加备注、记录时间、添加费用、附加文件（或拖放到事项上）、编辑或删除事项。',
+      tour_time_t: '时间和费用',
+      tour_time: '为每个事项记录时间和费用。费用可以与时间关联（例如 小时 × 时薪），每条记录都可以指定给某个人员。',
+      tour_progress_t: '进度',
+      tour_progress: '整个清单和每个阶段的进度、时间和费用。点击这里的阶段可跳转到该阶段。',
+      tour_report_t: '报告和打印',
+      tour_report: '时间 / 费用报告按人员、阶段和类型显示合计，并附有图表。“打印概览”可将清单打印到纸上。',
+      tour_checklists_t: '多个清单',
+      tour_checklists: '新建清单、复制此清单作为模板重复使用，或在已保存的清单之间切换。',
+      tour_display_t: '显示',
+      tour_display: '显示或隐藏描述、备注和附件，并更改主题和语言。',
+      tour_backup_t: '备份和分享',
+      tour_backup: '将清单导出为文件（包括附件），并在此处或其他电脑上再次导入。',
+      tour_end_t: '准备就绪！',
+      tour_end: '随时可以用 ? 按钮再次观看此教程。',
       overview_subtitle: '选择打印清单中要包含的内容',
       include_stage_descriptions: '包含阶段描述',
       include_item_descriptions: '包含事项描述',
@@ -3205,7 +3468,7 @@ body {
       checklist_deleted: 'Чек-лист удалён',
       delete_all: 'Удалить всё',
       delete_all_q: 'Удалить все чек-листы?',
-      delete_all_msg: 'Это безвозвратно удалит из этого браузера {checklists} и все их вложения. Вы начнёте с пустого чек-листа.',
+      delete_all_msg: 'Это безвозвратно удалит из этого браузера {checklists} и все их вложения. Вы начнёте заново со стартового чек-листа.',
       all_deleted: 'Все чек-листы удалены',
       id_copied: 'ID чек-листа скопирован',
       id_is: 'ID чек-листа: {id}',
@@ -3294,6 +3557,40 @@ body {
       report: 'Отчёт по времени и расходам',
       report_empty: 'Время и расходы ещё не записаны. Запишите время или добавьте расход у пункта, чтобы увидеть отчёт.',
       print_overview: 'Печать обзора',
+      tour_step: '{n} из {total}',
+      tour_next: 'Далее',
+      tour_back: 'Назад',
+      tour_skip: 'Пропустить обучение',
+      tour_done: 'Готово',
+      tutorial: 'Обучение',
+      tour_welcome_t: 'Добро пожаловать в checklist4life',
+      tour_welcome: 'Короткий обзор основ, примерно на минуту. Его можно пропустить и посмотреть позже кнопкой ?.',
+      tour_checklist_t: 'Ваш чек-лист',
+      tour_checklist: 'Нажмите на заголовок или описание, чтобы изменить их. Всё автоматически сохраняется в этом браузере.',
+      tour_stage_t: 'Этапы',
+      tour_stage: 'Чек-лист делится на этапы. У каждого этапа есть заголовок, необязательное описание и свои пункты.',
+      tour_stage_actions_t: 'Управление этапом',
+      tour_stage_actions: 'Этими кнопками можно переместить этап вверх или вниз, изменить его (заголовок, описание, число колонок), удалить или добавить пункт кнопкой +.',
+      tour_add_stage_t: 'Добавление этапов',
+      tour_add_stage: 'Добавляйте столько этапов, сколько нужно. Новые этапы добавляются в конец чек-листа.',
+      tour_check_t: 'Отметка пунктов',
+      tour_check: 'Поставьте галочку или нажмите на заголовок, чтобы отметить пункт как выполненный. Нажмите ещё раз, чтобы отменить.',
+      tour_item_actions_t: 'Инструменты пункта',
+      tour_item_actions: 'Перемещайте пункт, добавляйте заметку, записывайте время, добавляйте расходы, прикрепляйте файлы (или перетаскивайте их на пункт), изменяйте или удаляйте его.',
+      tour_time_t: 'Время и расходы',
+      tour_time: 'Записывайте время и расходы по каждому пункту. Расход можно связать со временем (напр. часы × ставка), а каждую запись — назначить исполнителю.',
+      tour_progress_t: 'Прогресс',
+      tour_progress: 'Прогресс, время и расходы всего чек-листа и каждого этапа. Нажмите здесь на этап, чтобы перейти к нему.',
+      tour_report_t: 'Отчёт и печать',
+      tour_report: 'Отчёт по времени и расходам показывает итоги по исполнителям, этапам и типам, с диаграммами. «Печать обзора» печатает чек-лист на бумаге.',
+      tour_checklists_t: 'Несколько чек-листов',
+      tour_checklists: 'Создайте новый чек-лист, клонируйте этот, чтобы использовать как шаблон, или переключайтесь между сохранёнными чек-листами.',
+      tour_display_t: 'Отображение',
+      tour_display: 'Показывайте или скрывайте описания, заметки и вложения, меняйте тему и язык.',
+      tour_backup_t: 'Резервная копия',
+      tour_backup: 'Экспортируйте чек-листы в файл (с вложениями) и импортируйте их обратно — здесь или на другом компьютере.',
+      tour_end_t: 'Всё готово!',
+      tour_end: 'Посмотреть это обучение снова можно в любой момент кнопкой ?.',
       overview_subtitle: 'Выберите, что включить в печатный чек-лист',
       include_stage_descriptions: 'Включить описания этапов',
       include_item_descriptions: 'Включить описания пунктов',
@@ -4050,7 +4347,7 @@ body {
   }
   function loadPrefs() {
     // first run (nothing saved yet): start in the browser's language
-    const defaults = { showDescriptions: true, showNotes: true, showAttachments: true, theme: 'white-simple', lang: store.get(PREFS_KEY) ? DEFAULT_LANG : detectLanguage() };
+    const defaults = { showDescriptions: true, showNotes: true, showAttachments: true, theme: 'white-simple', lang: store.get(PREFS_KEY) ? DEFAULT_LANG : detectLanguage(), tourDone: false };
     let prefs;
     try { prefs = Object.assign(defaults, JSON.parse(store.get(PREFS_KEY) || '{}')); }
     catch (e) { prefs = defaults; }
@@ -4372,6 +4669,7 @@ body {
     renderLangMenu();
     setMenu(isMenuOpen()); // burger label in the current language
     fitToolbar();          // labels changed length
+    if (tourOpen()) showTourStep(tourIndex); // tutorial texts in the new language
   }
   function renderLangMenu() {
     const current = LANGUAGES.find((l) => l.id === lang) || LANGUAGES[0];
@@ -4951,8 +5249,9 @@ body {
       });
     },
     'toggle-switcher'() { switcherPanel.hidden ? openSwitcher() : closeSwitcher(); },
-    // Remove every saved checklist (their attachment files are garbage-collected) and start
-    // over with one empty checklist; display settings and language are kept
+    // Remove every saved checklist (their attachment files are garbage-collected) and start over
+    // with the default checklist, as on the first run (in the current language, translated on
+    // language switches while untouched); display settings and language are kept
     'delete-all'() {
       save();
       const count = savedIds().length;
@@ -4963,7 +5262,7 @@ body {
         submitLabel: t('delete_all'), danger: true,
         onSubmit: () => {
           savedIds().forEach((id) => store.remove(CHECKLIST_PREFIX + id));
-          const fresh = blankChecklist();
+          const fresh = sampleChecklist(lang);
           writeChecklist(fresh);
           openChecklist(fresh);
           scheduleGc();
@@ -5104,6 +5403,7 @@ body {
     'import'() { $('#importInput').click(); },
     'open-report'() { if (allLogs(checklist).length) openReport(); },
     'print-overview'() { openPrintOverview(); },
+    'start-tour'() { startTour(); },
     'toggle-menu'() { setMenu(!isMenuOpen()); },
     'toggle-lang'() { langPanel.hidden ? openLangMenu() : closeLangMenu(); },
     'set-lang'({ el }) { closeLangMenu(); langToggle.focus(); setLang(el.dataset.lang); },
@@ -6178,9 +6478,143 @@ body {
     toastTimer = setTimeout(() => { t.className = 'toast' + (isError ? ' toast--error' : ''); }, 3000);
   }
 
+  /* ==================================================================
+     Tutorial: a guided tour over the real controls, shown once to everyone (prefs.tourDone)
+     and replayed with the "?" button. Each step highlights its targets (dimming the rest) and
+     explains them in a bubble; steps whose targets aren't on screen (e.g. no stages yet, or the
+     toolbar folded into the burger menu) point at a fallback or show the bubble centred.
+     ================================================================== */
+  const tourEl = $('#tour');
+  const tourSpot = $('#tourSpot');
+  const tourBubble = $('#tourBubble');
+  const firstTourItem = () => stagesEl.querySelector('.item:not(.item--done)') || stagesEl.querySelector('.item');
+  const inItem = (sel) => () => { const it = firstTourItem(); return it ? [...it.querySelectorAll(sel)] : []; };
+  const toolbarItem = (sel) => document.querySelector('.toolbar ' + sel);
+  const TOUR_STEPS = [
+    { id: 'welcome' },
+    { id: 'checklist', targets: () => [titleEl, descEl] },
+    { id: 'stage', targets: () => [stagesEl.querySelector('.stage__heading')] },
+    { id: 'stage_actions', targets: () => [stagesEl.querySelector('.stage__actions')] },
+    { id: 'add_stage', targets: () => [stagesEl.querySelector('[data-action="add-stage"]')] },
+    { id: 'check', targets: inItem('.item__check, .item__title') },
+    { id: 'item_actions', targets: inItem('.item__actions') },
+    { id: 'time', targets: inItem('[data-action="log-time"], [data-action="log-cost"]') },
+    { id: 'progress', targets: () => [$('#progressPanel')] },
+    { id: 'report', targets: () => [$('#reportButton'), $('#printOverviewButton')] },
+    { id: 'checklists', targets: () => [toolbarItem('.toolbar__group [data-action="new-checklist"]'), toolbarItem('[data-action="clone-checklist"]'), $('#switcherToggle')], fallback: true },
+    { id: 'display', targets: () => [$('#settings'), $('#lang')], fallback: true },
+    { id: 'backup', targets: () => [toolbarItem('[data-action="import"]'), toolbarItem('[data-action="export"]')], fallback: true },
+    { id: 'end', targets: () => [$('#helpButton')], fallback: true }
+  ];
+  let tourIndex = -1;
+  const tourOpen = () => tourIndex >= 0;
+  const isShown = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  // Visible targets of a step; toolbar steps fall back to the burger button when folded into the menu
+  function tourTargets(step) {
+    if (!step.targets) return [];
+    const els = step.targets().filter(isShown);
+    if (!els.length && step.fallback && isShown($('#toolbarBurger'))) return [$('#toolbarBurger')];
+    return els;
+  }
+  function tourRect(els) {
+    const rects = els.map((el) => el.getBoundingClientRect());
+    const pad = 6;
+    return {
+      top: Math.min(...rects.map((r) => r.top)) - pad,
+      left: Math.min(...rects.map((r) => r.left)) - pad,
+      right: Math.max(...rects.map((r) => r.right)) + pad,
+      bottom: Math.max(...rects.map((r) => r.bottom)) + pad
+    };
+  }
+  // Spotlight around the targets, bubble below / above / beside them (or centred when there are none)
+  function placeTour() {
+    if (!tourOpen()) return;
+    const vw = window.innerWidth, vh = window.innerHeight, gap = 12, margin = 12;
+    const bw = tourBubble.offsetWidth, bh = tourBubble.offsetHeight;
+    const els = tourTargets(TOUR_STEPS[tourIndex]);
+    let top, left;
+    if (!els.length) {
+      tourSpot.classList.add('tour__spot--none');
+      top = (vh - bh) / 2;
+      left = (vw - bw) / 2;
+    } else {
+      const r = tourRect(els);
+      tourSpot.classList.remove('tour__spot--none');
+      Object.assign(tourSpot.style, { top: r.top + 'px', left: r.left + 'px', width: (r.right - r.left) + 'px', height: (r.bottom - r.top) + 'px' });
+      const centreX = Math.min(Math.max((r.left + r.right) / 2 - bw / 2, margin), vw - bw - margin);
+      if (r.bottom + gap + bh <= vh - margin) { top = r.bottom + gap; left = centreX; }
+      else if (r.top - gap - bh >= margin) { top = r.top - gap - bh; left = centreX; }
+      else if (r.left - gap - bw >= margin) { left = r.left - gap - bw; top = Math.min(Math.max(r.top, margin), vh - bh - margin); }
+      else if (r.right + gap + bw <= vw - margin) { left = r.right + gap; top = Math.min(Math.max(r.top, margin), vh - bh - margin); }
+      else { left = centreX; top = vh - bh - margin; }
+    }
+    tourBubble.style.top = Math.max(margin, top) + 'px';
+    tourBubble.style.left = Math.max(margin, left) + 'px';
+  }
+  let tourFrame = 0;
+  const scheduleTour = () => { cancelAnimationFrame(tourFrame); tourFrame = requestAnimationFrame(placeTour); };
+  function showTourStep(i) {
+    tourIndex = i;
+    const step = TOUR_STEPS[i];
+    const last = i === TOUR_STEPS.length - 1;
+    $('#tourCount').textContent = t('tour_step', { n: i + 1, total: TOUR_STEPS.length });
+    $('#tourTitle').textContent = t(`tour_${step.id}_t`);
+    $('#tourText').textContent = t(`tour_${step.id}`);
+    $('#tourBack').textContent = t('tour_back');
+    $('#tourBack').hidden = i === 0;
+    $('#tourNext').textContent = t(last ? 'tour_done' : 'tour_next');
+    $('#tourSkip').textContent = t('tour_skip');
+    $('#tourSkip').hidden = last;
+    // bring the targets into view, then place (again once a smooth scroll has settled)
+    const els = tourTargets(step);
+    if (els.length) {
+      const r = tourRect(els);
+      if (r.top < 0 || r.bottom > window.innerHeight) els[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    placeTour();
+    setTimeout(placeTour, 400);
+    $('#tourNext').focus({ preventScroll: true });
+  }
+  function startTour() {
+    closeSwitcher();
+    closeLangMenu();
+    if (isMenuOpen()) setMenu(false);
+    document.documentElement.classList.add('tour-on'); // hover-only buttons stay visible while touring
+    tourEl.hidden = false;
+    showTourStep(0);
+  }
+  function endTour() {
+    tourEl.hidden = true;
+    tourIndex = -1;
+    document.documentElement.classList.remove('tour-on');
+    prefs.tourDone = true; // never started automatically again
+    savePrefs();
+  }
+  const tourNext = () => (tourIndex < TOUR_STEPS.length - 1 ? showTourStep(tourIndex + 1) : endTour());
+  const tourBack = () => { if (tourIndex > 0) showTourStep(tourIndex - 1); };
+  $('#tourNext').addEventListener('click', tourNext);
+  $('#tourBack').addEventListener('click', tourBack);
+  $('#tourSkip').addEventListener('click', endTour);
+  window.addEventListener('resize', () => { if (tourOpen()) scheduleTour(); });
+  window.addEventListener('scroll', () => { if (tourOpen()) scheduleTour(); }, { passive: true, capture: true });
+  // Keyboard: ← / → (Enter on a button activates it), Escape skips; focus stays inside the bubble
+  document.addEventListener('keydown', (e) => {
+    if (!tourOpen()) return;
+    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); endTour(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); tourNext(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); tourBack(); }
+    else if (e.key === 'Tab') {
+      const buttons = [...tourBubble.querySelectorAll('button')].filter((b) => !b.hidden);
+      const at = buttons.indexOf(document.activeElement);
+      e.preventDefault();
+      buttons[(at + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length].focus();
+    }
+  }, true);
+
   applyStaticI18n();
   render();
-  scheduleGc(5000); // clean up files left behind by deleted items/checklists
+  scheduleGc(5000);
+  if (!prefs.tourDone) setTimeout(startTour, 500); // shown once to everyone (replay with the ? button) // clean up files left behind by deleted items/checklists
 })();
 </script>
 </body>

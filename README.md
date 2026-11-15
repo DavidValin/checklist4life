@@ -8,7 +8,7 @@ Supported languages:
 🇬🇧 English, 🇪🇸 Español, 🇩🇪 Deutsch, 🇫🇷 Français, 🇳🇱 Nederlands, 🇨🇳 中文, 🇷🇺 Русский
 ```
 
-![preview](https://github.com/DavidValin/checklist4life/raw/master/preview.png)
+![preview](https://github.com/DavidValin/checklist4life/raw/master/preview.gif)
 
 ✨ All Features:
 
