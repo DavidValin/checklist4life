@@ -32,7 +32,7 @@
   --border: #e4e0d8;
   --text: #1f1d1a;
   --muted: #6e6a62;
-  --accent: #2f6f5e;
+  --accent: #297828;
   --stage-title: #1d5fd1;
   --cost: #9a5b00;
   --cost-soft: #fbeed6;
@@ -162,17 +162,13 @@ body {
   user-select: none;
   transition: background .15s, border-color .15s, color .15s;
 }
-.toggle-chip::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border: 1.5px solid currentColor;
-  border-radius: 50%;
-  transition: background .15s;
-}
+/* eye = content shown, crossed-out eye = content hidden */
+.toggle-chip__icon { flex: none; width: 15px; height: 15px; }
+.toggle-chip__icon--shown,
+.toggle-chip--on .toggle-chip__icon--hidden { display: none; }
+.toggle-chip--on .toggle-chip__icon--shown { display: block; }
 .toggle-chip:hover { border-color: var(--muted); }
 .toggle-chip--on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
-.toggle-chip--on::before { background: currentColor; }
 .toggle-chip--focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 .toggle-chip__input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 
@@ -399,7 +395,64 @@ body {
   margin-bottom: 8px;
 }
 .header__top .header__title { flex: 1 1 320px; min-width: 0; margin-bottom: 0; }
-.header__report { flex: none; }
+.header__report,
+.header__print { flex: none; }
+
+/* ==========================================================================
+   Block: overview (printed checklist, built into .print-root by "Print overview")
+   ========================================================================== */
+.overview__head { margin-bottom: 14px; }
+.overview__title { margin: 0; font-family: var(--font-display); font-size: 24px; font-weight: 600; line-height: 1.2; }
+/* title left, "Printed on … · progress · totals" right, on the same line */
+.overview__head-row { display: flex; align-items: baseline; justify-content: space-between; gap: 6px 24px; }
+.overview__head-row .overview__title { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.overview__meta { flex: none; max-width: 50%; margin: 0; font-size: 12px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.overview__desc { margin: 8px 0 0; font-size: 13px; color: var(--muted); white-space: pre-wrap; }
+.overview__stage { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 18px; padding: 12px 0; border-top: 1px solid var(--border); }
+.overview__stage-title { margin: 0; font-family: var(--font-display); font-size: 17px; font-weight: 600; line-height: 1.25; color: var(--stage-title); overflow-wrap: anywhere; }
+.overview__stage-desc { margin: 3px 0 0; font-size: 12px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.overview__stage-meta { display: block; margin: 4px 0 0; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.overview__progress { margin-top: 2px; }
+.overview__progress-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.overview__track { flex: 1; height: 5px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.overview__bar { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.overview__ratio { flex: none; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* same columns as on screen (1–7); the text gets smaller the more columns a stage has so they fit on the page */
+.overview__items {
+  --item-font: clamp(9px, calc(15px - var(--cols, 3) * 0.75px), 13px); /* 3 cols ≈ 12.8px, 5 ≈ 11.3px, 7 ≈ 9.8px */
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+  gap: 6px calc(20px - var(--cols, 3) * 1.5px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  align-content: start;
+}
+.overview__item { display: flex; align-items: flex-start; gap: 8px; break-inside: avoid; }
+.overview__check {
+  flex: none;
+  display: grid;
+  place-content: center;
+  width: 13px;
+  height: 13px;
+  margin-top: 2px;
+  border: 1.5px solid var(--muted);
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--accent-text);
+}
+.overview__item--done .overview__check { border-color: var(--accent); background: var(--accent); }
+.overview__body { display: flex; flex-direction: column; min-width: 0; }
+.overview__item-title { font-size: var(--item-font); font-weight: 600; overflow-wrap: anywhere; }
+.overview__item--done .overview__item-title { color: var(--done); text-decoration: line-through; }
+.overview__item-desc { font-size: max(9px, calc(var(--item-font) - 1px)); color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.overview__item-meta { font-size: max(9px, calc(var(--item-font) - 1px)); color: var(--cost); font-variant-numeric: tabular-nums; }
+.overview__empty { margin: 0; font-size: 12px; color: var(--muted); }
+/* no time or costs yet: greyed out, explained by its tooltip (aria-disabled, not disabled, so the tooltip still shows) */
+.header__report[aria-disabled="true"],
+.header__report[aria-disabled="true"]:hover { opacity: .45; cursor: not-allowed; border-color: var(--border); }
+.header__report[aria-disabled="true"]:active { transform: none; }
 
 /* ==========================================================================
    Block: report (Time / Cost Report modal: totals per person, stage and item)
@@ -456,10 +509,10 @@ body {
    ========================================================================== */
 .print-root { display: none; }
 @media print {
-  @page { margin: 12mm; }
+  @page { size: landscape; margin: 12mm; } /* report and overview always print in landscape */
   :root, :root[data-theme="dark"] {
     --bg: #ffffff; --surface: #ffffff; --surface-2: #f9f8f5; --border: #e4e0d8;
-    --text: #1f1d1a; --muted: #6e6a62; --accent: #2f6f5e; --stage-title: #1d5fd1;
+    --text: #1f1d1a; --muted: #6e6a62; --accent: #297828; --stage-title: #1d5fd1;
     --cost: #9a5b00; --cost-soft: #fbeed6; --accent-soft: #e3efe9; --accent-text: #ffffff;
     --danger: #b4412f; --danger-soft: #f8e6e2; --done: #9a958c;
     --viz-1: #2a78d6;
@@ -1381,9 +1434,9 @@ body {
       </div>
     </div>
     <div class="toolbar__group settings" id="settings" role="group" aria-label="Display settings (saved automatically)" data-i18n-attr="aria-label:settings_aria">
-      <label class="toggle-chip" title="Show stage and item descriptions" data-i18n-attr="title:descriptions_title"><input type="checkbox" class="toggle-chip__input" data-pref="showDescriptions"><span class="toggle-chip__label" data-i18n="descriptions">Descriptions</span></label>
-      <label class="toggle-chip" title="Show the notes icon and note previews on items" data-i18n-attr="title:notes_title"><input type="checkbox" class="toggle-chip__input" data-pref="showNotes"><span class="toggle-chip__label" data-i18n="notes">Notes</span></label>
-      <label class="toggle-chip" title="Show the attach button and attached files on items" data-i18n-attr="title:attachments_title"><input type="checkbox" class="toggle-chip__input" data-pref="showAttachments"><span class="toggle-chip__label" data-i18n="attachments">Attachments</span></label>
+      <label class="toggle-chip" title="Show stage and item descriptions" data-i18n-attr="title:descriptions_title"><input type="checkbox" class="toggle-chip__input" data-pref="showDescriptions"><svg class="toggle-chip__icon toggle-chip__icon--shown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="toggle-chip__icon toggle-chip__icon--hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19M6.6 6.6A18.4 18.4 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="m2 2 20 20"/></svg><span class="toggle-chip__label" data-i18n="descriptions">Descriptions</span></label>
+      <label class="toggle-chip" title="Show the notes icon and note previews on items" data-i18n-attr="title:notes_title"><input type="checkbox" class="toggle-chip__input" data-pref="showNotes"><svg class="toggle-chip__icon toggle-chip__icon--shown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="toggle-chip__icon toggle-chip__icon--hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19M6.6 6.6A18.4 18.4 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="m2 2 20 20"/></svg><span class="toggle-chip__label" data-i18n="notes">Notes</span></label>
+      <label class="toggle-chip" title="Show the attach button and attached files on items" data-i18n-attr="title:attachments_title"><input type="checkbox" class="toggle-chip__input" data-pref="showAttachments"><svg class="toggle-chip__icon toggle-chip__icon--shown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="toggle-chip__icon toggle-chip__icon--hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19M6.6 6.6A18.4 18.4 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="m2 2 20 20"/></svg><span class="toggle-chip__label" data-i18n="attachments">Attachments</span></label>
       <label class="settings__theme" title="Theme" data-i18n-attr="title:theme">
         <span class="settings__label" data-i18n="theme">Theme</span>
         <select class="settings__select" data-pref="theme"></select>
@@ -1425,9 +1478,13 @@ body {
     </div>
     <div class="header__top">
       <h1 class="header__title editable" id="checklistTitle" contenteditable="true" spellcheck="false" data-placeholder="Untitled checklist" data-i18n-attr="data-placeholder:untitled_checklist"></h1>
-      <button type="button" class="button header__report" data-action="open-report" id="reportButton" hidden>
+      <button type="button" class="button header__report" data-action="open-report" id="reportButton" aria-disabled="true">
         <svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M8 17v-5M13 17V8M18 17v-9"/></svg>
         <span data-i18n="report">Time / Cost Report</span>
+      </button>
+      <button type="button" class="button header__print" data-action="print-overview" id="printOverviewButton">
+        <svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        <span data-i18n="print_overview">Print overview</span>
       </button>
     </div>
     <p class="header__description editable" id="checklistDescription" contenteditable="true" data-placeholder="Add a description…" data-i18n-attr="data-placeholder:add_description"></p>
@@ -1699,6 +1756,15 @@ body {
       person_ph: 'Type or pick a name (empty = unknown)',
       unknown_person: 'Unknown',
       report: 'Time / Cost Report',
+      report_empty: 'No time or costs logged yet. Log time or add a cost on an item to see the report.',
+      print_overview: 'Print overview',
+      overview_subtitle: 'Choose what to include in the printed checklist',
+      include_stage_descriptions: 'Include stage descriptions',
+      include_item_descriptions: 'Include item descriptions',
+      include_time: 'Include time',
+      include_costs: 'Include costs',
+      include_progress: 'Include progress',
+      overview_printed: 'Printed on {date}',
       report_by_person: 'By person',
       report_by_type: 'By type',
       report_item_person: 'Item / person',
@@ -1946,6 +2012,15 @@ body {
       person_ph: 'Escribe o elige un nombre (vacío = desconocido)',
       unknown_person: 'Desconocido',
       report: 'Informe de tiempo / costes',
+      report_empty: 'Aún no se ha registrado tiempo ni costes. Registra tiempo o añade un coste en un elemento para ver el informe.',
+      print_overview: 'Imprimir resumen',
+      overview_subtitle: 'Elige qué incluir en la checklist impresa',
+      include_stage_descriptions: 'Incluir descripciones de etapas',
+      include_item_descriptions: 'Incluir descripciones de elementos',
+      include_time: 'Incluir tiempo',
+      include_costs: 'Incluir costes',
+      include_progress: 'Incluir progreso',
+      overview_printed: 'Impreso el {date}',
       report_by_person: 'Por persona',
       report_by_type: 'Por tipo',
       report_item_person: 'Elemento / persona',
@@ -2193,6 +2268,15 @@ body {
       person_ph: 'Namen eingeben oder auswählen (leer = unbekannt)',
       unknown_person: 'Unbekannt',
       report: 'Zeit-/Kostenbericht',
+      report_empty: 'Noch keine Zeit oder Kosten erfasst. Erfasse Zeit oder füge einem Eintrag Kosten hinzu, um den Bericht zu sehen.',
+      print_overview: 'Übersicht drucken',
+      overview_subtitle: 'Wähle, was die gedruckte Checkliste enthalten soll',
+      include_stage_descriptions: 'Phasenbeschreibungen einbeziehen',
+      include_item_descriptions: 'Eintragsbeschreibungen einbeziehen',
+      include_time: 'Zeit einbeziehen',
+      include_costs: 'Kosten einbeziehen',
+      include_progress: 'Fortschritt einbeziehen',
+      overview_printed: 'Gedruckt am {date}',
       report_by_person: 'Nach Person',
       report_by_type: 'Nach Art',
       report_item_person: 'Eintrag / Person',
@@ -2440,6 +2524,15 @@ body {
       person_ph: 'Saisissez ou choisissez un nom (vide = inconnu)',
       unknown_person: 'Inconnu',
       report: 'Rapport temps / coûts',
+      report_empty: 'Aucun temps ni coût saisi pour l’instant. Saisissez du temps ou ajoutez un coût sur un élément pour voir le rapport.',
+      print_overview: 'Imprimer l’aperçu',
+      overview_subtitle: 'Choisissez ce qu’il faut inclure dans la checklist imprimée',
+      include_stage_descriptions: 'Inclure les descriptions des étapes',
+      include_item_descriptions: 'Inclure les descriptions des éléments',
+      include_time: 'Inclure le temps',
+      include_costs: 'Inclure les coûts',
+      include_progress: 'Inclure la progression',
+      overview_printed: 'Imprimé le {date}',
       report_by_person: 'Par personne',
       report_by_type: 'Par type',
       report_item_person: 'Élément / personne',
@@ -2687,6 +2780,15 @@ body {
       person_ph: 'Typ of kies een naam (leeg = onbekend)',
       unknown_person: 'Onbekend',
       report: 'Tijd-/kostenrapport',
+      report_empty: 'Nog geen tijd of kosten geregistreerd. Registreer tijd of voeg kosten toe aan een item om het rapport te zien.',
+      print_overview: 'Overzicht afdrukken',
+      overview_subtitle: 'Kies wat er in de afgedrukte checklist komt',
+      include_stage_descriptions: 'Fasebeschrijvingen opnemen',
+      include_item_descriptions: 'Itembeschrijvingen opnemen',
+      include_time: 'Tijd opnemen',
+      include_costs: 'Kosten opnemen',
+      include_progress: 'Voortgang opnemen',
+      overview_printed: 'Afgedrukt op {date}',
       report_by_person: 'Per persoon',
       report_by_type: 'Per soort',
       report_item_person: 'Item / persoon',
@@ -2934,6 +3036,15 @@ body {
       person_ph: '输入或选择姓名（留空 = 未知）',
       unknown_person: '未知',
       report: '时间 / 费用报告',
+      report_empty: '尚未记录时间或费用。在事项上记录时间或添加费用后即可查看报告。',
+      print_overview: '打印概览',
+      overview_subtitle: '选择打印清单中要包含的内容',
+      include_stage_descriptions: '包含阶段描述',
+      include_item_descriptions: '包含事项描述',
+      include_time: '包含时间',
+      include_costs: '包含费用',
+      include_progress: '包含进度',
+      overview_printed: '打印于 {date}',
       report_by_person: '按人员',
       report_by_type: '按类型',
       report_item_person: '事项 / 人员',
@@ -3181,6 +3292,15 @@ body {
       person_ph: 'Введите или выберите имя (пусто = неизвестно)',
       unknown_person: 'Неизвестно',
       report: 'Отчёт по времени и расходам',
+      report_empty: 'Время и расходы ещё не записаны. Запишите время или добавьте расход у пункта, чтобы увидеть отчёт.',
+      print_overview: 'Печать обзора',
+      overview_subtitle: 'Выберите, что включить в печатный чек-лист',
+      include_stage_descriptions: 'Включить описания этапов',
+      include_item_descriptions: 'Включить описания пунктов',
+      include_time: 'Включить время',
+      include_costs: 'Включить расходы',
+      include_progress: 'Включить прогресс',
+      overview_printed: 'Напечатано {date}',
       report_by_person: 'По исполнителям',
       report_by_type: 'По типам',
       report_item_person: 'Пункт / исполнитель',
@@ -4029,7 +4149,11 @@ body {
     if (document.activeElement !== descEl) descEl.textContent = checklist.description;
     document.title = checklist.title || t('app_title');
     $('#checklistId').textContent = checklist.id;
-    $('#reportButton').hidden = !allLogs(checklist).length;
+    // always shown; greyed out with an explanation until there is time or a cost to report
+    const reportBtn = $('#reportButton');
+    const noData = !allLogs(checklist).length;
+    reportBtn.setAttribute('aria-disabled', String(noData));
+    if (noData) reportBtn.title = t('report_empty'); else reportBtn.removeAttribute('title');
     setSwitcherCount(savedIds().length);
   }
 
@@ -4978,7 +5102,8 @@ body {
 
     /* ---- Import / export ---- */
     'import'() { $('#importInput').click(); },
-    'open-report'() { openReport(); },
+    'open-report'() { if (allLogs(checklist).length) openReport(); },
+    'print-overview'() { openPrintOverview(); },
     'toggle-menu'() { setMenu(!isMenuOpen()); },
     'toggle-lang'() { langPanel.hidden ? openLangMenu() : closeLangMenu(); },
     'set-lang'({ el }) { closeLangMenu(); langToggle.focus(); setLang(el.dataset.lang); },
@@ -5618,6 +5743,102 @@ body {
         <h1 class="print-root__title">${esc(t('report'))}</h1>
         <p class="print-root__subtitle">${esc(checklist.title || t('untitled_checklist'))}</p>${html}`;
       window.print();
+    });
+  }
+
+  /* ---- Print overview: the open checklist on paper (white, simple layout), with optional
+     stage descriptions, item descriptions, time, costs and progress (the checklist description is always printed). Built into #printRoot, the only element shown when printing. ---- */
+  function overviewHTML(c, opts) {
+    // "done/total · pct%" (shown with the progress option)
+    const ratio = (items) => {
+      const done = items.filter((i) => i.done).length;
+      return `${done}/${items.length} · ${items.length ? Math.round((done / items.length) * 100) : 0}%`;
+    };
+    // time spent · costs, each with its own option
+    const totals = (items) => {
+      const parts = [];
+      const minutes = sumMinutes(items), costs = sumCosts(items);
+      if (opts.time && minutes) parts.push(formatDuration(minutes));
+      if (opts.costs && costs.length) parts.push(formatCostTotals(costs));
+      return parts.join(' · ');
+    };
+    // a stage's figures, as in the progress panel on the right of the page: time · costs, then the bar
+    const stageProgress = (items) => {
+      const done = items.filter((i) => i.done).length;
+      const pct = items.length ? Math.round((done / items.length) * 100) : 0;
+      const sum = totals(items);
+      if (!opts.progress) return sum ? `<p class="overview__stage-meta">${esc(sum)}</p>` : '';
+      return `
+        <div class="overview__progress">
+          ${sum ? `<span class="overview__stage-meta">${esc(sum)}</span>` : ''}
+          <span class="overview__progress-row">
+            <span class="overview__track"><span class="overview__bar" style="width: ${pct}%"></span></span>
+            <span class="overview__ratio">${esc(ratio(items))}</span>
+          </span>
+        </div>`;
+    };
+    const item = (i) => {
+      const extra = [];
+      if (opts.time && i.timeLogs.length) extra.push(formatDuration(sumMinutes([i])));
+      if (opts.costs && i.costs.length) extra.push(formatCostTotals(sumCosts([i])));
+      return `
+        <li class="overview__item${i.done ? ' overview__item--done' : ''}">
+          <span class="overview__check" aria-hidden="true">${i.done ? '✓' : ''}</span>
+          <span class="overview__body">
+            <span class="overview__item-title">${esc(i.title)}</span>
+            ${opts.itemDescriptions && i.description ? `<span class="overview__item-desc">${esc(i.description)}</span>` : ''}
+            ${extra.length ? `<span class="overview__item-meta">${esc(extra.join(' · '))}</span>` : ''}
+          </span>
+        </li>`;
+    };
+    const stages = c.stages.map((stage) => `
+      <section class="overview__stage">
+        <div>
+          <h2 class="overview__stage-title">${esc(stage.title)}</h2>
+          ${opts.stageDescriptions && stage.description ? `<p class="overview__stage-desc">${esc(stage.description)}</p>` : ''}
+          ${stageProgress(stage.items)}
+        </div>
+        ${stage.items.length ? `<ul class="overview__items" style="--cols: ${stage.columns}">${stage.items.map(item).join('')}</ul>` : '<p class="overview__empty">—</p>'}
+      </section>`).join('');
+    return `
+      <div class="overview">
+        <header class="overview__head">
+          <div class="overview__head-row">
+            <h1 class="overview__title">${esc(c.title || t('untitled_checklist'))}</h1>
+            <p class="overview__meta">${esc([
+              t('overview_printed', { date: formatDMYTime(new Date().toISOString()) }),
+              opts.progress ? ratio(c.stages.flatMap((st) => st.items)) : '',
+              totals(c.stages.flatMap((st) => st.items))
+            ].filter(Boolean).join(' · '))}</p>
+          </div>
+          ${c.description ? `<p class="overview__desc">${esc(c.description)}</p>` : ''}
+        </header>
+        ${stages || `<p class="overview__empty">${esc(t('no_stages_panel'))}</p>`}
+      </div>`;
+  }
+  function openPrintOverview() {
+    openModal({
+      title: t('print_overview'),
+      subtitle: t('overview_subtitle'),
+      fields: [
+        { name: 'includeStageDescriptions', type: 'checkbox', label: t('include_stage_descriptions'), value: true },
+        { name: 'includeItemDescriptions', type: 'checkbox', label: t('include_item_descriptions'), value: true },
+        { name: 'includeTime', type: 'checkbox', label: t('include_time'), value: true },
+        { name: 'includeCosts', type: 'checkbox', label: t('include_costs'), value: true },
+        { name: 'includeProgress', type: 'checkbox', label: t('include_progress'), value: true }
+      ],
+      submitLabel: t('print'),
+      onSubmit: (values, formData) => {
+        save();
+        $('#printRoot').innerHTML = overviewHTML(checklist, {
+          stageDescriptions: formData.has('includeStageDescriptions'),
+          itemDescriptions: formData.has('includeItemDescriptions'),
+          time: formData.has('includeTime'),
+          costs: formData.has('includeCosts'),
+          progress: formData.has('includeProgress')
+        });
+        window.print();
+      }
     });
   }
 
