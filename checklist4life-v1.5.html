@@ -538,6 +538,9 @@ body {
   color: var(--muted);
 }
 .switcher__new { padding: 6px 12px; }
+.switcher__actions { display: flex; align-items: center; gap: 6px; }
+.switcher__delete-all { padding: 6px 10px; color: var(--danger); }
+.switcher__delete-all:hover { background: var(--danger-soft); color: var(--danger); }
 .switcher__list {
   list-style: none;
   margin: 0;
@@ -1363,10 +1366,16 @@ body {
       <div class="switcher__panel" id="switcherPanel" hidden>
         <div class="switcher__head">
           <span class="switcher__heading" data-i18n="saved_checklists">Saved checklists</span>
-          <button type="button" class="button button--primary switcher__new" data-action="new-checklist">
-            <svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-            <span data-i18n="new">New</span>
-          </button>
+          <span class="switcher__actions">
+            <button type="button" class="button button--ghost switcher__delete-all" data-action="delete-all">
+              <svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+              <span data-i18n="delete_all">Delete all</span>
+            </button>
+            <button type="button" class="button button--primary switcher__new" data-action="new-checklist">
+              <svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              <span data-i18n="new">New</span>
+            </button>
+          </span>
         </div>
         <ul class="switcher__list" id="switcherList"></ul>
       </div>
@@ -1601,6 +1610,10 @@ body {
       delete_checklist_msg: '{title} ({id}) and all its stages will be removed from this browser permanently.',
       delete: 'Delete',
       checklist_deleted: 'Checklist deleted',
+      delete_all: 'Delete all',
+      delete_all_q: 'Delete all checklists?',
+      delete_all_msg: 'This removes {checklists} and all their attachments from this browser permanently. You will start with an empty checklist.',
+      all_deleted: 'All checklists deleted',
       id_copied: 'Checklist ID copied',
       id_is: 'Checklist ID: {id}',
       new_stage: 'New stage',
@@ -1844,6 +1857,10 @@ body {
       delete_checklist_msg: '{title} ({id}) y todas sus etapas se eliminarán de este navegador de forma permanente.',
       delete: 'Eliminar',
       checklist_deleted: 'Checklist eliminada',
+      delete_all: 'Eliminar todo',
+      delete_all_q: '¿Eliminar todas las checklists?',
+      delete_all_msg: 'Esto elimina de este navegador, de forma permanente, {checklists} y todos sus adjuntos. Empezarás con una checklist vacía.',
+      all_deleted: 'Todas las checklists eliminadas',
       id_copied: 'ID de la checklist copiado',
       id_is: 'ID de la checklist: {id}',
       new_stage: 'Nueva etapa',
@@ -2087,6 +2104,10 @@ body {
       delete_checklist_msg: '{title} ({id}) und alle Phasen werden dauerhaft aus diesem Browser entfernt.',
       delete: 'Löschen',
       checklist_deleted: 'Checkliste gelöscht',
+      delete_all: 'Alle löschen',
+      delete_all_q: 'Alle Checklisten löschen?',
+      delete_all_msg: 'Damit werden {checklists} samt allen Anhängen dauerhaft aus diesem Browser entfernt. Du beginnst mit einer leeren Checkliste.',
+      all_deleted: 'Alle Checklisten gelöscht',
       id_copied: 'Checklisten-ID kopiert',
       id_is: 'Checklisten-ID: {id}',
       new_stage: 'Neue Phase',
@@ -2330,6 +2351,10 @@ body {
       delete_checklist_msg: '{title} ({id}) et toutes ses étapes seront définitivement supprimées de ce navigateur.',
       delete: 'Supprimer',
       checklist_deleted: 'Checklist supprimée',
+      delete_all: 'Tout supprimer',
+      delete_all_q: 'Supprimer toutes les checklists ?',
+      delete_all_msg: 'Cela supprime définitivement de ce navigateur {checklists} et toutes leurs pièces jointes. Vous repartirez d’une checklist vide.',
+      all_deleted: 'Toutes les checklists ont été supprimées',
       id_copied: 'ID de la checklist copié',
       id_is: 'ID de la checklist : {id}',
       new_stage: 'Nouvelle étape',
@@ -2573,6 +2598,10 @@ body {
       delete_checklist_msg: '{title} ({id}) en alle fasen worden permanent uit deze browser verwijderd.',
       delete: 'Verwijderen',
       checklist_deleted: 'Checklist verwijderd',
+      delete_all: 'Alles verwijderen',
+      delete_all_q: 'Alle checklists verwijderen?',
+      delete_all_msg: 'Hiermee worden {checklists} en al hun bijlagen permanent uit deze browser verwijderd. Je begint met een lege checklist.',
+      all_deleted: 'Alle checklists verwijderd',
       id_copied: 'Checklist-ID gekopieerd',
       id_is: 'Checklist-ID: {id}',
       new_stage: 'Nieuwe fase',
@@ -2816,6 +2845,10 @@ body {
       delete_checklist_msg: '{title}（{id}）及其所有阶段将从此浏览器中永久删除。',
       delete: '删除',
       checklist_deleted: '清单已删除',
+      delete_all: '全部删除',
+      delete_all_q: '删除所有清单？',
+      delete_all_msg: '这将从此浏览器中永久删除 {checklists}及其所有附件。你将从一个空清单开始。',
+      all_deleted: '所有清单已删除',
       id_copied: '清单 ID 已复制',
       id_is: '清单 ID：{id}',
       new_stage: '新建阶段',
@@ -3059,6 +3092,10 @@ body {
       delete_checklist_msg: '{title} ({id}) и все его этапы будут безвозвратно удалены из этого браузера.',
       delete: 'Удалить',
       checklist_deleted: 'Чек-лист удалён',
+      delete_all: 'Удалить всё',
+      delete_all_q: 'Удалить все чек-листы?',
+      delete_all_msg: 'Это безвозвратно удалит из этого браузера {checklists} и все их вложения. Вы начнёте с пустого чек-листа.',
+      all_deleted: 'Все чек-листы удалены',
       id_copied: 'ID чек-листа скопирован',
       id_is: 'ID чек-листа: {id}',
       new_stage: 'Новый этап',
@@ -4271,7 +4308,7 @@ body {
     if (String(n).length !== digits) fitToolbar();
   }
   // Toolbar actions after which the menu closes (settings toggles keep it open)
-  const MENU_CLOSING_ACTIONS = new Set(['new-checklist', 'clone-checklist', 'open-checklist', 'delete-checklist', 'import', 'export', 'set-lang']);
+  const MENU_CLOSING_ACTIONS = new Set(['new-checklist', 'clone-checklist', 'open-checklist', 'delete-checklist', 'delete-all', 'import', 'export', 'set-lang']);
 
   function openLangMenu() {
     langPanel.hidden = false;
@@ -4790,6 +4827,26 @@ body {
       });
     },
     'toggle-switcher'() { switcherPanel.hidden ? openSwitcher() : closeSwitcher(); },
+    // Remove every saved checklist (their attachment files are garbage-collected) and start
+    // over with one empty checklist; display settings and language are kept
+    'delete-all'() {
+      save();
+      const count = savedIds().length;
+      closeSwitcher();
+      openModal({
+        title: t('delete_all_q'),
+        message: t('delete_all_msg', { checklists: tn('n_checklists', count) }),
+        submitLabel: t('delete_all'), danger: true,
+        onSubmit: () => {
+          savedIds().forEach((id) => store.remove(CHECKLIST_PREFIX + id));
+          const fresh = blankChecklist();
+          writeChecklist(fresh);
+          openChecklist(fresh);
+          scheduleGc();
+          toast(t('all_deleted'));
+        }
+      });
+    },
     'copy-id'() {
       const ok = () => toast(t('id_copied'));
       const fail = () => toast(t('id_is', { id: checklist.id }));
@@ -5578,10 +5635,15 @@ body {
   }
 
   /* ==================================================================
-     Export
-     - 1 checklist  → { app, version, type: "checklist", id, title, …, stages }
+     Export (file format version 2)
+     - 1 checklist  → { app, version, type: "checklist", id, title, …, stages, persons }
      - N checklists → { app, version, type: "checklists", exportedAt, checklists: [ … ] }
+     Version 2 (app v1.5) adds: persons [{ id, name, rate? }], personId on time logs and costs,
+     costId / timeLogId links between them, and the cost types product / labor / service.
+     Import accepts any version (version 1 files import fully). The app v1.0 also imports
+     version 2 files, but drops people, rates and links, and turns the new cost types into "other".
      ================================================================== */
+  const EXPORT_VERSION = 2;
   const slugify = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
   function downloadJSON(data, filename) {
@@ -5615,13 +5677,13 @@ body {
     const note = missing ? t('export_missing', { attachments: tn('n_attachments', missing) }) : '';
     if (list.length === 1) {
       const c = list[0];
-      downloadJSON({ app: 'checklist-app', version: 1, type: 'checklist', ...out[0] }, `${slugify(c.title) || 'checklist'}-${c.id}.json`);
+      downloadJSON({ app: 'checklist-app', version: EXPORT_VERSION, type: 'checklist', ...out[0] }, `${slugify(c.title) || 'checklist'}-${c.id}.json`);
       toast(t('exported_one', { title: c.title || t('untitled_checklist'), note }), missing > 0);
       return;
     }
     const now = new Date().toISOString();
     downloadJSON(
-      { app: 'checklist-app', version: 1, type: 'checklists', exportedAt: now, checklists: out },
+      { app: 'checklist-app', version: EXPORT_VERSION, type: 'checklists', exportedAt: now, checklists: out },
       `checklists-${list.length}-${now.slice(0, 10)}.json`
     );
     toast(t('exported_many', { checklists: tn('n_checklists', list.length), note }), missing > 0);
@@ -5878,8 +5940,10 @@ body {
   bindEditable(descEl, 'description');
 
   // Extra safety: flush the open checklist when the tab is hidden or closed
-  window.addEventListener('pagehide', save);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+  // …unless it was deleted meanwhile (storage cleared, or deleted in another tab): never bring it back
+  const flush = () => { if (store.get(CHECKLIST_PREFIX + checklist.id) !== null) save(); };
+  window.addEventListener('pagehide', flush);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
 
   /* ==================================================================
      Toast

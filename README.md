@@ -17,12 +17,22 @@ Supported languages:
 * **Automatic autosave** in browser database
 * Each item has a **title, description and a checkbox** to track pending/done
 * You can define **dynamic stages** and items
+* Choose **1 to 7 columns** per stage and **reorder** stages and items
 * You can **clone** a checklist document (which works as a template)
 * You can **attach files**: pdfs, images, zip files to each item
+* **Drag & drop** files onto an item to attach them
 * You can **add a note** to a check item
 * You can **log time and costs** per item
+* Log time in **minutes, hours, days, weeks, months or years**
+* Costs have a **type** (transport, food, product, labor, service, other) and one of **46 currencies**
+* Assign each time/cost entry to a **person** (with autocomplete), remembering each person's **hourly rate**
+* **Link a cost to a time entry** (e.g. hours × hourly rate) or log it on its own
 * See the **time/cost/completion progress** of each stage or the full checklist
 * Generate detailed **cost/time** report with print option
+* The report shows totals **per person, stage, item and cost type**, with **donut charts**
 * **Export/Import** checklists (single or all, including attachments)
 * **4 different themes** with details customization in header
-* **7 UI languages**, switchable from the flag in the header (English by default)
+* **7 UI languages**, switchable from the flag in the header (your browser's language on first use, English by default)
+* A **starter checklist** in your language on first use
+* **Mobile friendly**: the header collapses into a menu when it doesn't fit
+* Each checklist has a unique **ID** you can bookmark (`#id` in the URL)
