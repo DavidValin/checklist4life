@@ -30,9 +30,12 @@ Supported languages:
 * See the **time/cost/completion progress** of each stage or the full checklist
 * Generate detailed **cost/time** report with print option
 * The report shows totals **per person, stage, item and cost type**, with **donut charts**
+* Print an **overview** of the checklist, choosing what to include (descriptions, time, costs, progress)
 * **Export/Import** checklists (single or all, including attachments)
 * **4 different themes** with details customization in header
 * **7 UI languages**, switchable from the flag in the header (your browser's language on first use, English by default)
 * A **starter checklist** in your language on first use
+* **Delete all** checklists at once and start over with the starter checklist
+* A **guided tutorial** on first use, replayable anytime with the **?** button
 * **Mobile friendly**: the header collapses into a menu when it doesn't fit
 * Each checklist has a unique **ID** you can bookmark (`#id` in the URL)
