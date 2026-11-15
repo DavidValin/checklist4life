@@ -1538,7 +1538,7 @@ body {
 
 <aside class="page__aside progress-panel" id="progressPanel" aria-label="Progress" data-i18n-attr="aria-label:progress"></aside>
 <footer class="footer">
-  checklist4life v1.5 <span data-i18n="by">by</span> <a class="footer__link" href="https://www.davidvalin.com/?ref=checklist4life" target="_blank" rel="noopener">David Valin</a>
+  checklist4life v1.6 <span data-i18n="by">by</span> <a class="footer__link" href="https://www.davidvalin.com/?ref=checklist4life" target="_blank" rel="noopener">David Valin</a>
 </footer>
 </div>
 
@@ -6157,12 +6157,6 @@ body {
 
   /* ==================================================================
      Export (file format version 2)
-     - 1 checklist  → { app, version, type: "checklist", id, title, …, stages, persons }
-     - N checklists → { app, version, type: "checklists", exportedAt, checklists: [ … ] }
-     Version 2 (app v1.5) adds: persons [{ id, name, rate? }], personId on time logs and costs,
-     costId / timeLogId links between them, and the cost types product / labor / service.
-     Import accepts any version (version 1 files import fully). The app v1.0 also imports
-     version 2 files, but drops people, rates and links, and turns the new cost types into "other".
      ================================================================== */
   const EXPORT_VERSION = 2;
   const slugify = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
