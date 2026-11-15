@@ -1,0 +1,2869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checklists</title>
+<script>
+  // Apply saved theme + width before paint (white is the default)
+  try {
+    var prefs = JSON.parse(localStorage.getItem('checklist-app:prefs') || '{}');
+    var theme = String(prefs.theme || 'white-simple');
+    if (theme === 'dark' || theme.indexOf('black') === 0) document.documentElement.dataset.theme = 'dark';
+    if (/-simple$/.test(theme)) document.documentElement.dataset.style = 'simple';
+    if (prefs.fullWidth !== false) document.documentElement.dataset.width = 'full';
+  } catch (e) {}
+</script>
+<style>
+/* ==========================================================================
+   Terminology
+   - Checklist : a document (8-char unique id), saved in localStorage
+   - Stage     : a section inside a checklist, items laid out in columns
+   - Item      : a single checkbox inside a stage (title, description, notes)
+   ========================================================================== */
+
+/* ==========================================================================
+   Tokens (white theme default, dark theme opt-in)
+   ========================================================================== */
+:root {
+  --bg: #f4f2ee;
+  --surface: #ffffff;
+  --surface-2: #f9f8f5;
+  --border: #e4e0d8;
+  --text: #1f1d1a;
+  --muted: #6e6a62;
+  --accent: #2f6f5e;
+  --stage-title: #1d5fd1;
+  --cost: #9a5b00;
+  --cost-soft: #fbeed6;
+  --accent-soft: #e3efe9;
+  --accent-text: #ffffff;
+  --danger: #b4412f;
+  --danger-soft: #f8e6e2;
+  --done: #9a958c;
+  --shadow: 0 1px 2px rgba(31, 29, 26, .06), 0 4px 16px rgba(31, 29, 26, .05);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #161614;
+  --surface: #1f1f1c;
+  --surface-2: #262622;
+  --border: #34332e;
+  --text: #ecebe6;
+  --muted: #a19d93;
+  --accent: #6cc3a8;
+  --stage-title: #6ea8ff;
+  --cost: #f0b45a;
+  --cost-soft: #3a2c14;
+  --accent-soft: #1f3a32;
+  --accent-text: #0f1f1a;
+  --danger: #e57b68;
+  --danger-soft: #3a2420;
+  --done: #77736a;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+[hidden] { display: none !important; }
+
+/* ==========================================================================
+   Block: app
+   ========================================================================== */
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px 20px 64px;
+}
+/* Display settings (toolbar settings) */
+:root[data-width="full"] .app { max-width: 97%; }
+.app--no-descriptions .stage__description,
+.app--no-descriptions .item__description { display: none; }
+.app--no-notes .item__notes,
+.app--no-notes .item__notes-preview { display: none; }
+.app--no-attachments .item__attach,
+.app--no-attachments .item__attachments { display: none; }
+
+/* ==========================================================================
+   Block: toolbar
+   ========================================================================== */
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  grid-column: 1 / -1;     /* spans the whole page: Import / Export sit at the right edge of the screen */
+  padding: 12px 20px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.toolbar__group { display: flex; flex-wrap: wrap; gap: 8px; }
+.toolbar__group--end { margin-left: auto; }
+
+/* ==========================================================================
+   Block: settings (display options in the toolbar, autosaved)
+   ========================================================================== */
+.settings { align-items: center; gap: 6px; padding-left: 12px; border-left: 1px solid var(--border); }
+.settings__theme { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; }
+.settings__label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.settings__select {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.settings__select:hover { border-color: var(--muted); }
+.settings__select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 720px) {
+  .settings { padding-left: 0; border-left: 0; }
+}
+
+/* ==========================================================================
+   Block: toggle-chip (on/off pill backed by a checkbox)
+   ========================================================================== */
+.toggle-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.toggle-chip::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  transition: background .15s;
+}
+.toggle-chip:hover { border-color: var(--muted); }
+.toggle-chip--on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.toggle-chip--on::before { background: currentColor; }
+.toggle-chip--focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.toggle-chip__input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+
+/* ==========================================================================
+   Block: button
+   ========================================================================== */
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s, opacity .15s, transform .05s;
+}
+.button:hover { border-color: var(--muted); }
+.button:active { transform: translateY(1px); }
+.button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.button:disabled { opacity: .45; cursor: not-allowed; }
+.button--primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.button--primary:hover { border-color: var(--accent); filter: brightness(1.08); }
+.button--danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.button--ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 6px 10px; }
+.button--ghost:hover { background: var(--surface-2); color: var(--text); border-color: transparent; }
+.button--icon {
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+.button--icon:hover { background: var(--surface-2); color: var(--text); border-color: transparent; }
+.button--icon-danger:hover { background: var(--danger-soft); color: var(--danger); }
+.button__icon { width: 16px; height: 16px; flex: none; }
+
+/* ==========================================================================
+   Block: page (checklist centred in the free space, progress panel at the far right edge)
+   ========================================================================== */
+.page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  align-items: start;
+}
+.page > .app { width: 100%; min-width: 0; }
+/* scrolls with the page: each stage's progress sits level with that stage (see alignProgressPanel) */
+.page__aside {
+  position: relative;
+  margin: 16px 20px 24px 0;
+}
+/* ==========================================================================
+   Block: footer
+   ========================================================================== */
+.footer {
+  grid-column: 1 / -1;   /* full width, below the checklist and the progress panel */
+  padding: 20px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+.footer__link { color: var(--accent); font-weight: 600; text-decoration: none; }
+.footer__link:hover { text-decoration: underline; }
+.footer__link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+@media (max-width: 960px) {
+  /* narrow: single column, progress panel at the end of the page */
+  .page { grid-template-columns: minmax(0, 1fr); }
+  .page__aside { margin: 0 20px 48px; }
+}
+
+/* ==========================================================================
+   Block: progress-panel
+   ========================================================================== */
+.progress-panel {
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.progress-panel__heading {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.progress-panel__total { display: flex; flex-direction: column; gap: 6px; padding-bottom: 14px; }
+.progress-panel__total .progress-panel__label { font-weight: 600; color: var(--text); }
+.progress-panel__label {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.progress-panel__stages {
+  list-style: none;
+  margin: 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.progress-panel__stage {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  width: calc(100% + 16px);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+/* label + total time spent, on one line (time aligned right) */
+.progress-panel__row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.progress-panel__row .progress-panel__label { flex: 1; min-width: 0; }
+.progress-panel__time { flex: none; font-size: 12px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Aligned mode (wide screens): stage rows are positioned level with their stage */
+.progress-panel--aligned .progress-panel__stages { position: relative; padding: 0; border-top: 0; }
+.progress-panel--aligned .progress-panel__stages > li { position: absolute; left: 0; right: 0; }
+.progress-panel__stage:hover { background: var(--surface-2); }
+.progress-panel__stage:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.progress-panel__empty { margin: 0; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+.progress--large .progress__track { height: 8px; }
+:root[data-style="simple"] .progress-panel { background: transparent; border-color: transparent; box-shadow: none; padding-left: 0; padding-right: 0; }
+.stage { scroll-margin-top: 84px; }
+
+/* ==========================================================================
+   Block: header (current checklist)
+   ========================================================================== */
+.header { margin: 16px 0 32px; }
+.header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.header__title {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 5vw, 42px);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -.01em;
+}
+.header__description {
+  margin: 0;
+  max-width: 70ch;
+  color: var(--muted);
+  font-size: 16px;
+  white-space: pre-wrap;
+}
+/* Title row: title on the left, checklist progress bar on the right */
+.header__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+  margin-bottom: 8px;
+}
+.header__top .header__title { flex: 1 1 320px; min-width: 0; margin-bottom: 0; }
+
+
+/* ==========================================================================
+   Block: editable (inline contenteditable text)
+   ========================================================================== */
+.editable {
+  border-radius: 6px;
+  outline: none;
+  transition: background .15s, box-shadow .15s;
+}
+.editable:hover { background: var(--surface-2); }
+.editable:focus { background: var(--surface); box-shadow: 0 0 0 2px var(--accent); }
+.editable:empty::before { content: attr(data-placeholder); color: var(--done); }
+
+/* ==========================================================================
+   Block: switcher (pick a saved checklist)
+   ========================================================================== */
+.switcher { position: relative; }
+.switcher__count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.switcher__chevron { transition: transform .15s; }
+.switcher__toggle[aria-expanded="true"] .switcher__chevron { transform: rotate(180deg); }
+.switcher__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: min(440px, calc(100vw - 40px));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, .18);
+  overflow: hidden;
+  animation: pop-in .15s ease;
+}
+.switcher__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 10px 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.switcher__heading {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.switcher__new { padding: 6px 12px; }
+.switcher__list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+}
+.switcher__item { display: flex; align-items: center; gap: 4px; border-radius: var(--radius-sm); }
+.switcher__item:hover { background: var(--surface-2); }
+.switcher__item--active,
+.switcher__item--active:hover { background: var(--accent-soft); }
+.switcher__select {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.switcher__select:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.switcher__title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.switcher__item--active .switcher__title { color: var(--accent); }
+.switcher__id { font: 12px/1.4 var(--font-mono); color: var(--muted); }
+.switcher__info { font-size: 12px; color: var(--muted); }
+.switcher__delete { flex: none; margin-right: 4px; }
+
+/* ==========================================================================
+   Block: checklist-id (badge with the current checklist id, click to copy)
+   ========================================================================== */
+.checklist-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.checklist-id:hover { border-color: var(--muted); color: var(--text); }
+.checklist-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.checklist-id__label {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .05em;
+}
+.checklist-id__value { font: 12px/1.4 var(--font-mono); }
+
+/* ==========================================================================
+   Block: progress
+   ========================================================================== */
+.progress { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.progress__track { flex: 1; height: 6px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.progress__bar { height: 100%; border-radius: inherit; background: var(--accent); transition: width .3s ease; }
+.progress__label { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   Block: stage
+   ========================================================================== */
+.stage {
+  margin-bottom: 28px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.stage__header { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+.stage__heading { flex: 1 1 260px; min-width: 0; }
+.stage__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--stage-title);
+  overflow-wrap: anywhere;
+}
+.stage__description { margin: 4px 0 0; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.stage__actions { display: flex; align-items: center; gap: 2px; }
+.stage__grid {
+  display: grid;
+  grid-template-columns: repeat(var(--columns, 3), minmax(0, 1fr));
+  gap: 12px;
+}
+.stage__empty {
+  grid-column: 1 / -1;
+  padding: 24px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  text-align: center;
+  color: var(--muted);
+}
+/* Dense grids (5–7 columns): item buttons move to their own row above the title
+   so narrow columns keep room for the title */
+.stage__grid--dense .item__top { flex-wrap: wrap; row-gap: 0; }
+.stage__grid--dense .item__actions { order: -1; flex-basis: 100%; margin: 0 0 0 24px; }
+.stage__grid--dense .item__action { width: 24px; height: 22px; }
+@media (max-width: 1200px) {
+  .stage__grid { grid-template-columns: repeat(min(var(--columns, 3), 4), minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .stage__grid { grid-template-columns: repeat(min(var(--columns, 3), 2), minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .stage__grid { grid-template-columns: minmax(0, 1fr); }
+  .stage { padding: 16px; }
+}
+
+/* "Simple" themes (White Simple / Black Simple):
+   borderless stages on a plain surface (white in White Simple), borderless items */
+/* Simple layout: stage info on the left (title → description → options),
+   items on the right, in the same row; no side padding */
+:root[data-style="simple"] .stage {
+  display: grid;
+  grid-template-columns: minmax(170px, 230px) minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+  margin-bottom: 12px;      /* stages no longer share the page colour → keep them apart */
+  padding: 0 0 0 16px;     /* room before the stage title */
+  border-radius: 0;
+  background: var(--surface);
+  border-color: transparent;
+  box-shadow: none;
+}
+:root[data-style="simple"] { --item-actions-h: 20px; } /* height of the item button row above each title */
+:root[data-style="simple"] .stage__header {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 4px;
+  margin-bottom: 0;
+  /* push the stage title down past the item button row so it lines up with the checkboxes */
+  /* title line (28px) centred on the checkbox (centre at 20px + 11px) */
+  padding-top: calc(var(--item-actions-h) - 3px);
+}
+:root[data-style="simple"] .stage__heading { flex: none; }
+:root[data-style="simple"] .stage__actions { flex-wrap: wrap; margin-left: -6px; }
+/* Compact: smaller stage type and tighter spacing */
+:root[data-style="simple"] .stage__title { font-size: 22px; line-height: 28px; }
+:root[data-style="simple"] .stage__description { margin-top: 2px; font-size: 13px; line-height: 1.45; }
+:root[data-style="simple"] .stage__actions .button--icon { width: 26px; height: 24px; padding: 0; justify-content: center; }
+:root[data-style="simple"] .stage__empty { padding: 10px; font-size: 13px; }
+:root[data-style="simple"] .item { gap: 2px; }
+:root[data-style="simple"] .item__meta { margin-top: 0; }
+:root[data-style="simple"] .item__title { font-size: 14px; }
+:root[data-style="simple"] .item__description { font-size: 13px; line-height: 1.45; }
+:root[data-style="simple"] .item__notes-preview { margin-top: 2px; padding: 4px 8px; font-size: 12px; background: var(--surface-2); }
+:root[data-style="simple"] .attachment__open { background: var(--surface-2); }
+:root[data-style="simple"] .attachment__open:hover { background: var(--accent-soft); }
+:root[data-style="simple"] .item,
+:root[data-style="simple"] .item:hover,
+:root[data-style="simple"] .item--done {
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+}
+:root[data-style="simple"] .item__notes--filled::after { box-shadow: 0 0 0 2px var(--surface); }
+:root[data-style="simple"] .stage__grid { gap: 8px 20px; }
+/* Item buttons on their own row above the title (aligned with the title text) */
+:root[data-style="simple"] .item__top { flex-wrap: wrap; row-gap: 0; }
+:root[data-style="simple"] .item__actions {
+  order: -1;
+  flex-basis: 100%;
+  margin: 0 0 0 24px;
+}
+:root[data-style="simple"] .item__action { width: 24px; height: var(--item-actions-h); }
+@media (hover: hover) {
+  /* Stage buttons appear only while hovering the stage info (title, description, progress) */
+  :root[data-style="simple"] .stage__actions { opacity: 0; transition: opacity .15s; }
+  :root[data-style="simple"] .stage__header:hover .stage__actions,
+  :root[data-style="simple"] .stage__header:focus-within .stage__actions { opacity: 1; }
+}
+@media (max-width: 720px) {
+  /* not enough room side by side: stack info above the items */
+  :root[data-style="simple"] .stage { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  :root[data-style="simple"] .stage__header { padding-top: 0; }
+}
+
+/* ==========================================================================
+   Block: add-stage
+   ========================================================================== */
+.add-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 18px;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.add-stage:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.add-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ==========================================================================
+   Block: item (a checkbox within a stage)
+   ========================================================================== */
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border-color .15s, background .15s;
+}
+.item:hover { border-color: var(--muted); }
+.item--done { background: var(--accent-soft); border-color: transparent; opacity: .5; }
+.item__top { display: flex; align-items: flex-start; gap: 10px; }
+.item__check {
+  flex: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  border: 2px solid var(--muted);
+  border-radius: 6px;
+  background: var(--surface);
+  cursor: pointer;
+  display: grid;
+  place-content: center;
+  transition: background .15s, border-color .15s;
+}
+.item__check::after {
+  content: "";
+  width: 10px;
+  height: 6px;
+  border-left: 2px solid var(--accent-text);
+  border-bottom: 2px solid var(--accent-text);
+  transform: rotate(-45deg) translate(1px, -1px) scale(0);
+  transition: transform .15s ease;
+}
+.item__check:checked { background: var(--accent); border-color: var(--accent); }
+.item__check:checked::after { transform: rotate(-45deg) translate(1px, -1px) scale(1); }
+.item__check:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.item__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  /* single line: full title if it fits, otherwise ends with … (full title in the hover tooltip) */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.item--done .item__title { color: var(--done); text-decoration: line-through; }
+.item__actions { display: flex; flex: none; align-items: center; margin: -4px -6px 0 0; }
+.item__action { position: relative; width: 28px; height: 28px; padding: 0; justify-content: center; }
+.item__action:disabled { cursor: default; background: transparent; }
+/* Item buttons appear only while hovering (or keyboard-focusing) the item, in every theme.
+   Space stays reserved → no layout shift.
+   Touch screens (no hover) always show them. */
+@media (hover: hover) {
+  .item__action,
+  .item__action:disabled { opacity: 0; transition: opacity .15s; }
+  .item:hover .item__action,
+  .item:focus-within .item__action { opacity: 1; }
+}
+.item:hover .item__action:disabled,
+.item:focus-within .item__action:disabled { opacity: .25; }
+@media (hover: none) { .item__action:disabled { opacity: .25; } }
+.item__notes--filled { color: var(--accent); }
+.item__notes--filled::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--surface-2);
+}
+.item--done .item__notes--filled::after { box-shadow: 0 0 0 2px var(--accent-soft); }
+.item__description {
+  margin: 0 0 0 30px;
+  color: var(--muted);
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.item__notes-preview {
+  margin: 0 0 0 30px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+  border-radius: 0 6px 6px 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+/* first line only; ends with … when it doesn't fit (or the note has more lines) */
+.item__notes-text {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Auto-generated, read-only created / updated dates (notes & attachments) */
+.timestamps {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.item--dragover { outline: 2px dashed var(--accent); outline-offset: 2px; }
+/* total time logged on the item (click → time log) */
+.item__meta { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 0 30px; }   /* directly below the title, aligned with the title text */
+.item__time,
+.item__cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px 1px 6px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.item__time .button__icon,
+.item__cost .button__icon { width: 12px; height: 12px; }
+.item__time:hover,
+.item__cost:hover { filter: brightness(.96); }
+.item__time:focus-visible,
+.item__cost:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.item__cost { background: var(--cost-soft); color: var(--cost); }
+.item--done .item__time,
+.item--done .item__cost { background: var(--surface); }
+
+/* ==========================================================================
+   Block: time-log (Log time modal)
+   ========================================================================== */
+.time-log { display: flex; flex-direction: column; gap: 14px; }
+.time-log__inputs { display: grid; grid-template-columns: minmax(0, 1fr) 130px; gap: 10px; align-items: end; }
+.time-log__inputs--cost { grid-template-columns: minmax(0, 1fr) 150px 120px; }
+@media (max-width: 480px) { .time-log__inputs--cost { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.time-log__type {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.time-log__summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+}
+.time-log__total { font-variant-numeric: tabular-nums; color: var(--accent); }
+.time-log__list { list-style: none; margin: -8px 0 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.time-log__entry { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.time-log__amount { flex: none; min-width: 60px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.time-log__note { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.time-log__date { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.time-log__remove { flex: none; width: 24px; height: 24px; padding: 0; justify-content: center; }
+.time-log__empty { margin: -8px 0 0; font-size: 13px; color: var(--muted); }
+.item__attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 0 30px;
+  padding: 0;
+  list-style: none;
+}
+
+/* ==========================================================================
+   Block: attachment (a file attached to an item, rendered like a note)
+   ========================================================================== */
+.attachment { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.attachment__open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 6px;
+  border: 0;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s;
+}
+.attachment__open:hover { background: var(--accent-soft); }
+.attachment__open:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.attachment__thumb,
+.attachment__badge {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.attachment__thumb { background: var(--surface-2); border: 1px solid var(--border); }
+.attachment__thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.attachment__badge {
+  display: grid;
+  place-content: center;
+  color: #fff;
+  font: 700 9px/1 var(--font-mono);
+  letter-spacing: .03em;
+  background: var(--muted);
+}
+.attachment__badge--pdf { background: #c8432f; }
+.attachment__badge--zip { background: #8a6a2f; }
+.attachment__info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.attachment__line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.attachment__info .timestamps { margin-top: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.attachment__name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.attachment__size { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.attachment__remove { flex: none; width: 24px; height: 24px; padding: 0; justify-content: center; }
+.attachment--missing .attachment__open { opacity: .55; cursor: help; }
+.attachment--missing .attachment__size::after { content: " · missing"; }
+@media (hover: hover) {
+  .attachment__remove { opacity: 0; transition: opacity .15s; }
+  .attachment:hover .attachment__remove,
+  .attachment:focus-within .attachment__remove { opacity: 1; }
+}
+/* Preview popup (images & PDFs) */
+.attachment-preview {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.attachment-preview__img { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; }
+.attachment-preview__frame { display: block; width: 100%; height: 75vh; border: 0; background: #fff; }
+
+/* ==========================================================================
+   Block: empty-state
+   ========================================================================== */
+.empty-state {
+  padding: 56px 24px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+}
+.empty-state__title { margin: 0 0 6px; font-family: var(--font-display); font-size: 22px; color: var(--text); }
+.empty-state__text { margin: 0 0 18px; }
+
+/* ==========================================================================
+   Block: modal (native <dialog>)
+   ========================================================================== */
+.modal {
+  width: min(520px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .25);
+}
+.modal--wide { width: min(1000px, calc(100vw - 32px)); }
+.modal::backdrop { background: rgba(20, 18, 15, .45); backdrop-filter: blur(2px); }
+.modal[open] { animation: pop-in .18s ease; }
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(8px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+.modal__form { display: flex; flex-direction: column; }
+.modal__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px 0; }
+.modal__title { margin: 0; font-family: var(--font-display); font-size: 20px; font-weight: 600; }
+.modal__subtitle { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.modal__body { display: flex; flex-direction: column; gap: 14px; padding: 16px 20px; }
+.modal__message { margin: 0; color: var(--muted); }
+.modal__message strong { color: var(--text); }
+.modal__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+/* ==========================================================================
+   Block: field
+   ========================================================================== */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field__label { font-size: 13px; font-weight: 600; }
+.field__input,
+.field__select,
+.field__textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  transition: border-color .15s, box-shadow .15s;
+}
+.field__textarea { min-height: 96px; resize: vertical; }
+.field__select { cursor: pointer; }
+.field__textarea--tall { min-height: 200px; }
+.field__input:focus,
+.field__select:focus,
+.field__textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+/* Checkbox field rendered as a toggle row */
+.field--toggle {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+.field--toggle:hover { border-color: var(--muted); }
+.field__text { display: flex; flex-direction: column; gap: 2px; }
+.field__hint { font-size: 13px; color: var(--muted); }
+.field__switch {
+  flex: none;
+  position: relative;
+  appearance: none;
+  width: 40px;
+  height: 24px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--border);
+  cursor: pointer;
+  transition: background .15s;
+}
+.field__switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
+  transition: transform .15s ease;
+}
+.field__switch:checked { background: var(--accent); }
+.field__switch:checked::after { transform: translateX(16px); }
+.field__switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ==========================================================================
+   Block: pick-list (multi-select list of checklists, used by Export)
+   ========================================================================== */
+.pick-list { display: flex; flex-direction: column; gap: 8px; }
+.pick-list__bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pick-list__count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pick-list__toggle { padding: 4px 10px; color: var(--accent); }
+.pick-list__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(50vh, 360px);
+  overflow-y: auto;
+}
+.pick-list__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.pick-list__row:hover { border-color: var(--muted); }
+.pick-list__row--checked { border-color: var(--accent); background: var(--accent-soft); }
+.pick-list__check {
+  flex: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  border: 2px solid var(--muted);
+  border-radius: 5px;
+  background: var(--surface);
+  display: grid;
+  place-content: center;
+  cursor: pointer;
+}
+.pick-list__check::after {
+  content: "";
+  width: 9px;
+  height: 5px;
+  border-left: 2px solid var(--accent-text);
+  border-bottom: 2px solid var(--accent-text);
+  transform: rotate(-45deg) translate(1px, -1px) scale(0);
+  transition: transform .12s ease;
+}
+.pick-list__check:checked { background: var(--accent); border-color: var(--accent); }
+.pick-list__check:checked::after { transform: rotate(-45deg) translate(1px, -1px) scale(1); }
+.pick-list__check:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pick-list__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pick-list__title { display: flex; align-items: center; gap: 8px; font-weight: 600; overflow-wrap: anywhere; }
+.pick-list__badge {
+  flex: none;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+}
+.pick-list__meta { font-size: 12px; color: var(--muted); }
+.pick-list__id { font: 12px var(--font-mono); }
+
+/* ==========================================================================
+   Block: toast
+   ========================================================================== */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 100;
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 14px;
+  box-shadow: var(--shadow);
+  transform: translate(-50%, 20px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s, transform .2s;
+}
+.toast--visible { opacity: 1; transform: translate(-50%, 0); }
+.toast--error { background: var(--danger); color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="page" id="page">
+  <div class="toolbar">
+    <div class="toolbar__group">
+      <button type="button" class="button button--primary" data-action="new-checklist">
+        <svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        New checklist
+      </button>
+      <button type="button" class="button" data-action="clone-checklist" title="Create a copy of this checklist with a new ID">
+        <svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Clone
+      </button>
+      <div class="switcher" id="switcher">
+        <button type="button" class="button switcher__toggle" data-action="toggle-switcher" id="switcherToggle" aria-haspopup="true" aria-expanded="false" aria-controls="switcherPanel" title="Switch to another saved checklist">
+          <svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          Switch
+          <span class="switcher__count" id="switcherCount">0</span>
+          <svg class="button__icon switcher__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="switcher__panel" id="switcherPanel" hidden>
+          <div class="switcher__head">
+            <span class="switcher__heading">Saved checklists</span>
+            <button type="button" class="button button--primary switcher__new" data-action="new-checklist">
+              <svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              New
+            </button>
+          </div>
+          <ul class="switcher__list" id="switcherList"></ul>
+        </div>
+      </div>
+    </div>
+    <div class="toolbar__group settings" id="settings" role="group" aria-label="Display settings (saved automatically)">
+      <label class="toggle-chip" title="Show stage and item descriptions"><input type="checkbox" class="toggle-chip__input" data-pref="showDescriptions"><span class="toggle-chip__label">Descriptions</span></label>
+      <label class="toggle-chip" title="Show the notes icon and note previews on items"><input type="checkbox" class="toggle-chip__input" data-pref="showNotes"><span class="toggle-chip__label">Notes</span></label>
+      <label class="toggle-chip" title="Show the attach button and attached files on items"><input type="checkbox" class="toggle-chip__input" data-pref="showAttachments"><span class="toggle-chip__label">Attachments</span></label>
+      <label class="toggle-chip" title="Use 97% of the window width"><input type="checkbox" class="toggle-chip__input" data-pref="fullWidth"><span class="toggle-chip__label">Full width</span></label>
+      <label class="settings__theme" title="Theme">
+        <span class="settings__label">Theme</span>
+        <select class="settings__select" data-pref="theme"></select>
+      </label>
+    </div>
+    <div class="toolbar__group toolbar__group--end">
+      <button type="button" class="button" data-action="import">
+        <svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Import JSON
+      </button>
+      <button type="button" class="button" data-action="export">
+        <svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        Export JSON
+      </button>
+      <input type="file" id="importInput" accept="application/json,.json" hidden>
+      <input type="file" id="attachInput" multiple accept="image/*,application/pdf,.pdf,application/zip,application/x-zip-compressed,.zip" hidden>
+    </div>
+  </div>
+
+<div class="app" id="app">
+  <header class="header">
+    <div class="header__meta">
+      <button type="button" class="checklist-id" data-action="copy-id" title="Copy checklist ID">
+        <span class="checklist-id__label">ID</span>
+        <code class="checklist-id__value" id="checklistId"></code>
+      </button>
+    </div>
+    <div class="header__top">
+      <h1 class="header__title editable" id="checklistTitle" contenteditable="true" spellcheck="false" data-placeholder="Untitled checklist"></h1>
+    </div>
+    <p class="header__description editable" id="checklistDescription" contenteditable="true" data-placeholder="Add a description…"></p>
+  </header>
+
+  <main id="stages"></main>
+</div>
+
+<aside class="page__aside progress-panel" id="progressPanel" aria-label="Progress"></aside>
+<footer class="footer">
+  checklist4life v1.0 by <a class="footer__link" href="https://www.davidvalin.com" target="_blank" rel="noopener">David Valin</a>
+</footer>
+</div>
+
+<!-- Generic modal -->
+<dialog class="modal" id="modal">
+  <form class="modal__form" id="modalForm" method="dialog">
+    <div class="modal__header">
+      <div>
+        <h2 class="modal__title" id="modalTitle"></h2>
+        <p class="modal__subtitle" id="modalSubtitle" hidden></p>
+      </div>
+      <button type="button" class="button button--icon" data-modal-dismiss aria-label="Close">
+        <svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal__body" id="modalBody"></div>
+    <div class="modal__footer">
+      <button type="button" class="button button--ghost" id="modalCancel" data-modal-dismiss>Cancel</button>
+      <button type="button" class="button" id="modalAlt" hidden></button>
+      <button type="submit" class="button button--primary" id="modalSubmit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // Swap an item with its neighbour (order = reading order: left→right, then next row)
+  function moveItem(stage, item, dir, action) {
+    const i = stage.items.indexOf(item);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= stage.items.length) return;
+    [stage.items[i], stage.items[j]] = [stage.items[j], stage.items[i]];
+    commit();
+    // keep keyboard focus on the moved item's button so it can be moved repeatedly
+    const btn = stagesEl.querySelector(`[data-item="${CSS.escape(item.id)}"] [data-action="${action}"]`);
+    if (btn && !btn.disabled) btn.focus({ preventScroll: true });
+  }
+
+  /* ==================================================================
+     Storage keys & constants
+     ================================================================== */
+  const LEGACY_KEY = 'checklist-app:data';        // very first single-checklist format (migrated)
+  const CHECKLIST_PREFIX = 'checklist-app:doc:';  // one entry per checklist: <prefix><id>
+  const ACTIVE_KEY = 'checklist-app:active';      // id of the last opened checklist
+  const PREFS_KEY = 'checklist-app:prefs';        // display settings
+
+  /* ==================================================================
+     Safe localStorage wrapper (storage can be blocked or full)
+     ================================================================== */
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
+    remove(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
+    keys() { try { return Object.keys(localStorage); } catch (e) { return []; } }
+  };
+
+  /* ==================================================================
+     Ids
+     - Checklists: exactly 8 chars [a-z0-9], unique among saved checklists
+     - Stages/items: internal ids, unique within their checklist
+     ================================================================== */
+  const ID_LENGTH = 8;
+  const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const isValidId = (id) => typeof id === 'string' && /^[a-z0-9]{8}$/.test(id);
+
+  function randomId() {
+    let out = '';
+    const buf = new Uint8Array(16);
+    while (out.length < ID_LENGTH) {
+      if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(buf);
+      else for (let i = 0; i < buf.length; i++) buf[i] = (Math.random() * 256) | 0;
+      for (const byte of buf) {
+        // rejection sampling: 252 = 36 * 7, so every character is equally likely
+        if (byte < 252 && out.length < ID_LENGTH) out += ID_ALPHABET[byte % 36];
+      }
+    }
+    return out;
+  }
+
+  const savedIds = () => store.keys().filter((k) => k.startsWith(CHECKLIST_PREFIX)).map((k) => k.slice(CHECKLIST_PREFIX.length));
+
+  // Generate ids until one isn't used by a saved checklist (or listed in `reserved`)
+  function newChecklistId(reserved = []) {
+    const taken = new Set(savedIds().concat(reserved));
+    let id;
+    do { id = randomId(); } while (taken.has(id));
+    return id;
+  }
+
+  const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+
+  /* ==================================================================
+     Data model & normalisation
+     Checklist: { id, title, description, updatedAt, stages: [Stage] }
+     Stage:     { id, title, description, columns (1–7), items: [Item] }
+     Item:      { id, title, description, done, notes, attachments: [Attachment], timeLogs: [TimeLog] }
+     TimeLog:   { id, minutes, note, loggedAt }
+     Cost:      { id, type (fuel | food | other), amount, currency (ISO 4217, default EUR), note, loggedAt }
+     Attachment:{ id, name, type, size }  — the file itself lives in IndexedDB (see "Attachments")
+     ================================================================== */
+  const str = (v) => (typeof v === 'string' ? v : v == null ? '' : String(v));
+
+  const MAX_COLUMNS = 7;
+  const COLUMN_OPTIONS = Array.from({ length: MAX_COLUMNS }, (_, i) => i + 1);
+  const parseColumns = (v) => (COLUMN_OPTIONS.includes(Number(v)) ? Number(v) : 3);
+
+  function normalizeItem(i) {
+    i = i || {};
+    return {
+      id: str(i.id) || uid(),
+      title: str(i.title) || 'Untitled item',
+      description: str(i.description),
+      done: Boolean(i.done),
+      notes: str(i.notes),
+      notesCreatedAt: i.notes ? isoDate(i.notesCreatedAt) : '',
+      notesUpdatedAt: i.notes ? isoDate(i.notesUpdatedAt || i.notesCreatedAt) : '',
+      attachments: Array.isArray(i.attachments) ? i.attachments.filter(isAttachmentMeta).map(normalizeAttachment) : [],
+      timeLogs: Array.isArray(i.timeLogs) ? i.timeLogs.map(normalizeTimeLog).filter(Boolean) : [],
+      costs: Array.isArray(i.costs) ? i.costs.map(normalizeCost).filter(Boolean) : []
+    };
+  }
+
+  /* ---- Costs ---- */
+  const COST_TYPES = [
+    { id: 'fuel', label: 'Fuel' },
+    { id: 'food', label: 'Food' },
+    { id: 'other', label: 'Other' }
+  ];
+  const CURRENCIES = ['EUR', 'USD', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD', 'NZD', 'CNY', 'HKD', 'SGD', 'KRW', 'INR',
+    'SEK', 'NOK', 'DKK', 'ISK', 'PLN', 'CZK', 'HUF', 'RON', 'TRY', 'UAH', 'RUB', 'ILS', 'AED', 'SAR', 'QAR', 'EGP',
+    'ZAR', 'NGN', 'KES', 'MAD', 'BRL', 'MXN', 'ARS', 'CLP', 'COP', 'PEN', 'UYU', 'TWD', 'THB', 'IDR', 'MYR', 'PHP', 'VND'];
+  const DEFAULT_CURRENCY = 'EUR';
+  const round2 = (n) => Math.round(n * 100) / 100;
+  function normalizeCost(c) {
+    if (!c || typeof c !== 'object') return null;
+    const amount = round2(Number(c.amount));
+    if (!(amount > 0) || !isFinite(amount)) return null;
+    const currency = str(c.currency).toUpperCase();
+    return {
+      id: str(c.id) || uid(),
+      type: COST_TYPES.some((t) => t.id === c.type) ? c.type : 'other',
+      amount,
+      currency: /^[A-Z]{3}$/.test(currency) ? currency : DEFAULT_CURRENCY,
+      note: str(c.note),
+      loggedAt: isoDate(c.loggedAt)
+    };
+  }
+  // Totals per currency (amounts in different currencies are never added together)
+  function sumCosts(items) {
+    const totals = new Map();
+    items.forEach((i) => i.costs.forEach((c) => totals.set(c.currency, round2((totals.get(c.currency) || 0) + c.amount))));
+    return Array.from(totals, ([currency, amount]) => ({ currency, amount }));
+  }
+  function formatMoney(amount, currency) {
+    try { return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount); }
+    catch (e) { return `${amount.toFixed(2)} ${currency}`; }
+  }
+  const formatCostTotals = (totals) => totals.map((t) => formatMoney(t.amount, t.currency)).join(' + ');
+
+  function normalizeTimeLog(t) {
+    if (!t || typeof t !== 'object') return null;
+    const minutes = Math.round(Number(t.minutes));
+    if (!(minutes > 0)) return null;
+    return { id: str(t.id) || uid(), minutes, note: str(t.note), loggedAt: isoDate(t.loggedAt) };
+  }
+  const sumMinutes = (items) => items.reduce((sum, i) => sum + i.timeLogs.reduce((s, t) => s + t.minutes, 0), 0);
+  // 45 → "45m", 90 → "1h 30m", 120 → "2h"
+  function formatDuration(minutes) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+  }
+
+  const isFileId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id);
+  const isAttachmentMeta = (a) => a && typeof a === 'object' && isFileId(a.id);
+  const normalizeAttachment = (a) => ({
+    id: a.id,
+    name: str(a.name) || 'file',
+    type: str(a.type),
+    size: Math.max(0, Number(a.size) || 0),
+    createdAt: isoDate(a.createdAt),
+    updatedAt: isoDate(a.updatedAt || a.createdAt)
+  });
+  // Keep only valid date strings (stored as ISO 8601)
+  const isoDate = (v) => {
+    if (typeof v !== 'string' || !v) return '';
+    const d = new Date(v);
+    return isNaN(d) ? '' : d.toISOString();
+  };
+
+  function normalizeStage(s) {
+    s = s || {};
+    return {
+      id: str(s.id) || uid(),
+      title: str(s.title) || 'Untitled stage',
+      description: str(s.description),
+      columns: parseColumns(s.columns),
+      items: Array.isArray(s.items) ? s.items.map(normalizeItem) : []
+    };
+  }
+
+  function normalizeChecklist(raw, forcedId) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid file: expected a checklist object.');
+    // `checklists` was the old name for stages
+    const rawStages = Array.isArray(raw.stages) ? raw.stages : Array.isArray(raw.checklists) ? raw.checklists : null;
+    if (!rawStages) throw new Error('Invalid file: a checklist needs a "stages" array.');
+    return {
+      id: forcedId || (isValidId(raw.id) ? raw.id : newChecklistId()),
+      title: str(raw.title),
+      description: str(raw.description),
+      updatedAt: str(raw.updatedAt),
+      stages: rawStages.map(normalizeStage)
+    };
+  }
+
+  const blankChecklist = () => ({ id: newChecklistId(), title: 'Untitled checklist', description: '', stages: [] });
+
+  const sampleChecklist = () => normalizeChecklist({
+    id: newChecklistId(),
+    title: 'Product Launch',
+    description: 'Everything we need to get done before going live. Click any title or description to edit it.',
+    stages: [
+      {
+        id: uid(), title: 'Pre-launch', description: 'Groundwork that must be finished first.', columns: 3,
+        items: [
+          { id: uid(), title: 'Finalize pricing', description: 'Agree on tiers and discounts with finance.', done: true, notes: 'Approved on Monday.' },
+          { id: uid(), title: 'Legal review', description: 'Terms of service and privacy policy.', done: false, notes: '' },
+          { id: uid(), title: 'Set up analytics', description: 'Events, funnels and dashboards.', done: false, notes: '' }
+        ]
+      },
+      {
+        id: uid(), title: 'Launch day', description: 'Tasks for the day itself.', columns: 3,
+        items: [
+          { id: uid(), title: 'Publish announcement', description: 'Blog post and newsletter.', done: false, notes: '' },
+          { id: uid(), title: 'Monitor errors', description: 'Watch logs and alerting channels.', done: false, notes: 'Who is on call?' }
+        ]
+      }
+    ]
+  });
+
+  /* ==================================================================
+     Checklist persistence
+     ================================================================== */
+  function readChecklist(id) {
+    const raw = store.get(CHECKLIST_PREFIX + id);
+    if (!raw) return null;
+    try { return normalizeChecklist(JSON.parse(raw), id); } catch (e) { return null; }
+  }
+
+  function writeChecklist(c) {
+    c.updatedAt = new Date().toISOString();
+    const data = { id: c.id, title: c.title, description: c.description, updatedAt: c.updatedAt, stages: c.stages };
+    return store.set(CHECKLIST_PREFIX + c.id, JSON.stringify(data));
+  }
+
+  function listChecklists() {
+    return savedIds().map(readChecklist).filter(Boolean)
+      .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+  }
+
+  /* ---- Migrations from earlier versions of this app ---- */
+  function migrateLegacy() {
+    const raw = store.get(LEGACY_KEY);
+    if (!raw) return;
+    try {
+      const c = normalizeChecklist(JSON.parse(raw));
+      if (writeChecklist(c)) { store.set(ACTIVE_KEY, c.id); store.remove(LEGACY_KEY); }
+    } catch (e) { store.remove(LEGACY_KEY); }
+  }
+
+  // Re-key saved checklists with an invalid id; rewrite old `checklists` field as `stages`
+  function migrateSaved() {
+    const active = store.get(ACTIVE_KEY);
+    savedIds().forEach((oldId) => {
+      const c = readChecklist(oldId);
+      if (!c) return;
+      if (!isValidId(oldId)) {
+        c.id = newChecklistId();
+        if (writeChecklist(c)) {
+          store.remove(CHECKLIST_PREFIX + oldId);
+          if (active === oldId) store.set(ACTIVE_KEY, c.id);
+        }
+      } else if (!/"stages"\s*:/.test(store.get(CHECKLIST_PREFIX + oldId) || '')) {
+        const updatedAt = c.updatedAt;
+        writeChecklist(c);
+        // keep the original timestamp: migration isn't a user edit
+        if (updatedAt) { c.updatedAt = updatedAt; store.set(CHECKLIST_PREFIX + c.id, JSON.stringify(c)); }
+      }
+    });
+  }
+
+  /* ---- Active checklist & URL hash (#<id>) ---- */
+  const hashId = () => { try { return decodeURIComponent(location.hash.slice(1)); } catch (e) { return ''; } };
+
+  function initialChecklist() {
+    migrateLegacy();
+    migrateSaved();
+    const fromHash = isValidId(hashId()) && readChecklist(hashId());
+    if (fromHash) return fromHash;
+    const active = store.get(ACTIVE_KEY);
+    const fromActive = active && readChecklist(active);
+    if (fromActive) return fromActive;
+    const saved = listChecklists();
+    if (saved.length) return saved[0];
+    const c = sampleChecklist();
+    writeChecklist(c);
+    return c;
+  }
+
+  function setActive(id) {
+    store.set(ACTIVE_KEY, id);
+    if (hashId() === id) return;
+    try { history.replaceState(null, '', '#' + id); } catch (e) { location.hash = id; }
+  }
+
+  /* ---- Display preferences ---- */
+  // Themes: palette (data-theme="dark" for black ones) + optional "simple" style (data-style="simple")
+  const THEMES = [
+    { id: 'white', label: 'White' },
+    { id: 'white-simple', label: 'White Simple' },
+    { id: 'black', label: 'Black' },
+    { id: 'black-simple', label: 'Black Simple' }
+  ];
+  function loadPrefs() {
+    const defaults = { showDescriptions: true, showNotes: true, showAttachments: true, fullWidth: true, theme: 'white-simple' };
+    let prefs;
+    try { prefs = Object.assign(defaults, JSON.parse(store.get(PREFS_KEY) || '{}')); }
+    catch (e) { prefs = defaults; }
+    // earlier versions stored 'light' / 'dark' and border toggles
+    if (prefs.theme === 'light') prefs.theme = 'white';
+    if (prefs.theme === 'dark') prefs.theme = 'black';
+    if (!THEMES.some((t) => t.id === prefs.theme)) prefs.theme = 'white-simple';
+    delete prefs.hideStageBorders;
+    delete prefs.hideItemBorders;
+    return prefs;
+  }
+
+  let checklist = initialChecklist();   // the open checklist
+  setActive(checklist.id);
+  const prefs = loadPrefs();
+  savePrefs(); // persist defaults + migrations so every option is always present in storage
+
+  function save() { writeChecklist(checklist); }
+  let prefsWarned = false;
+  function savePrefs() {
+    const ok = store.set(PREFS_KEY, JSON.stringify(prefs));
+    if (!ok && !prefsWarned && typeof toast === "function") { prefsWarned = true; setTimeout(() => toast("Settings could not be saved: browser storage is unavailable.", true)); }
+    return ok;
+  }
+
+  const findStage = (id) => checklist.stages.find((s) => s.id === id);
+  const findItem = (stage, id) => (stage ? stage.items.find((i) => i.id === id) : null);
+
+  /* ==================================================================
+     DOM helpers
+     ================================================================== */
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const app = $('#app');
+  const stagesEl = $('#stages');
+  const titleEl = $('#checklistTitle');
+  const descEl = $('#checklistDescription');
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const formatDate = (iso) => {
+    const d = new Date(iso);
+    return isNaN(d) ? '' : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  };
+  // dd/mm/yyyy (e.g. 30/12/2026), local time
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const formatDMY = (iso) => {
+    const d = new Date(iso);
+    return isNaN(d) ? '' : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+  };
+  const formatDMYTime = (iso) => {
+    const d = new Date(iso);
+    return isNaN(d) ? '' : `${formatDMY(iso)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  };
+  // Lists show only "Updated at 30/12/2026 14:05"; the created date appears when the note / file is opened
+  const timestampsLong = (createdAt, updatedAt) =>
+    [updatedAt && `Updated at ${formatDMYTime(updatedAt)}`, createdAt && `Created at ${formatDMYTime(createdAt)}`].filter(Boolean).join('; ');
+  function timestampsHTML(createdAt, updatedAt) {
+    const date = updatedAt || createdAt;
+    return date ? `<span class="timestamps">Updated at ${esc(formatDMYTime(date))}</span>` : '';
+  }
+  const checklistStats = (c) => {
+    const items = c.stages.flatMap((s) => s.items);
+    return { stages: c.stages.length, items: items.length, done: items.filter((i) => i.done).length };
+  };
+
+  const icons = {
+    plus: '<svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+    edit: '<svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+    trash: '<svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>',
+    note: '<svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>',
+    up: '<svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>',
+    down: '<svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+    left: '<svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>',
+    right: '<svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
+    coins: '<svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg>',
+    clock: '<svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    clip: '<svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>',
+    close: '<svg class="button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>'
+  };
+
+  function progressHTML(done, total) {
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    return `<div class="progress__track"><div class="progress__bar" style="width:${pct}%"></div></div>
+            <span class="progress__label">${done}/${total} · ${pct}%</span>`;
+  }
+
+  /* ==================================================================
+     Rendering
+     ================================================================== */
+  function renderHeader() {
+    if (document.activeElement !== titleEl) titleEl.textContent = checklist.title;
+    if (document.activeElement !== descEl) descEl.textContent = checklist.description;
+    document.title = checklist.title || 'Checklists';
+    $('#checklistId').textContent = checklist.id;
+    $('#switcherCount').textContent = savedIds().length;
+  }
+
+  // Right-hand panel: checklist progress + one bar per stage (click a stage to scroll to it)
+  function renderProgressPanel() {
+    const { items, done } = checklistStats(checklist);
+    const allItems = checklist.stages.flatMap((s) => s.items);
+    // time spent + costs, right-aligned next to the label
+    const timeHTML = (list) => {
+      const parts = [];
+      const min = sumMinutes(list);
+      const costs = sumCosts(list);
+      if (min) parts.push(`<span title="Time spent">${formatDuration(min)}</span>`);
+      if (costs.length) parts.push(`<span title="Costs">${esc(formatCostTotals(costs))}</span>`);
+      return parts.length ? `<span class="progress-panel__time">${parts.join(' · ')}</span>` : '';
+    };
+    $('#progressPanel').innerHTML = `
+      <h2 class="progress-panel__heading">Progress</h2>
+      <div class="progress-panel__total">
+        <span class="progress-panel__row">
+          <span class="progress-panel__label">${esc(checklist.title || 'Untitled checklist')}</span>
+          ${timeHTML(allItems)}
+        </span>
+        <div class="progress progress--large">${progressHTML(done, items)}</div>
+      </div>
+      ${checklist.stages.length ? `
+        <ul class="progress-panel__stages">
+          ${checklist.stages.map((stage) => {
+            const stageDone = stage.items.filter((i) => i.done).length;
+            return `
+              <li data-target="${esc(stage.id)}">
+                <button type="button" class="progress-panel__stage" data-action="scroll-to-stage" data-target="${esc(stage.id)}" title="Go to ${esc(stage.title)}">
+                  <span class="progress-panel__row">
+                    <span class="progress-panel__label">${esc(stage.title)}</span>
+                    ${timeHTML(stage.items)}
+                  </span>
+                  <span class="progress">${progressHTML(stageDone, stage.items.length)}</span>
+                </button>
+              </li>`;
+          }).join('')}
+        </ul>` : '<p class="progress-panel__empty">No stages yet.</p>'}`;
+  }
+
+  /* Place each stage's progress row level with that stage's title (wide layout only).
+     Rows never overlap: a row that would collide is pushed below the previous one. */
+  const progressPanelEl = $('#progressPanel');
+  const narrowLayout = window.matchMedia('(max-width: 960px)');
+  function alignProgressPanel() {
+    const list = progressPanelEl.querySelector('.progress-panel__stages');
+    const aligned = Boolean(list) && !narrowLayout.matches;
+    progressPanelEl.classList.toggle('progress-panel--aligned', aligned);
+    if (!list) return;
+    const rows = Array.from(list.children);
+    if (!aligned) {
+      list.style.height = '';
+      rows.forEach((li) => { li.style.top = ''; });
+      return;
+    }
+    const listTop = list.getBoundingClientRect().top;
+    let minTop = 0;
+    rows.forEach((li) => {
+      const stageEl = stagesEl.querySelector(`[data-stage="${CSS.escape(li.dataset.target)}"]`);
+      const titleEl = stageEl && stageEl.querySelector('.stage__title');
+      let top = minTop;
+      if (titleEl) {
+        const r = titleEl.getBoundingClientRect();
+        // centre the row's label line (button padding 6px + ~9px half line) on the title's first line
+        const firstLine = Math.min(r.height, parseFloat(getComputedStyle(titleEl).lineHeight) || r.height);
+        top = Math.max(minTop, r.top - listTop + firstLine / 2 - 15);
+      }
+      li.style.top = `${Math.round(top)}px`;
+      minTop = top + li.offsetHeight + 4;
+    });
+    list.style.height = `${Math.round(minTop)}px`;
+  }
+  let alignFrame = 0;
+  const scheduleAlign = () => { cancelAnimationFrame(alignFrame); alignFrame = requestAnimationFrame(alignProgressPanel); };
+  window.addEventListener('resize', scheduleAlign);
+  if (narrowLayout.addEventListener) narrowLayout.addEventListener('change', scheduleAlign);
+  // re-align whenever the checklist area changes size (images loading, settings toggled, editing the header…)
+  if (window.ResizeObserver) new ResizeObserver(scheduleAlign).observe($('#app'));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleAlign);
+
+  function renderItem(item, index, items) {
+    const notesLabel = item.notes ? 'Edit notes' : 'Add notes';
+    return `
+      <article class="item ${item.done ? 'item--done' : ''}" data-item="${esc(item.id)}">
+        <div class="item__top">
+          <input type="checkbox" class="item__check" data-action="toggle-item" ${item.done ? 'checked' : ''} aria-label="Mark “${esc(item.title)}” as done">
+          <h3 class="item__title" data-action="toggle-item" title="${esc(item.title)}">${esc(item.title)}</h3>
+
+          <div class="item__actions">
+            <button type="button" class="button button--icon item__action item__action--secondary" data-action="move-item-left" aria-label="Move item back" title="Move item back" ${index === 0 ? 'disabled' : ''}>${icons.left}</button>
+            <button type="button" class="button button--icon item__action item__action--secondary" data-action="move-item-right" aria-label="Move item forward" title="Move item forward" ${index === items.length - 1 ? 'disabled' : ''}>${icons.right}</button>
+            <button type="button" class="button button--icon item__action item__notes ${item.notes ? 'item__notes--filled' : ''}" data-action="edit-notes" aria-label="${notesLabel}" title="${notesLabel}">${icons.note}</button>
+            <button type="button" class="button button--icon item__action" data-action="log-time" aria-label="Log time" title="Log time">${icons.clock}</button>
+            <button type="button" class="button button--icon item__action" data-action="log-cost" aria-label="Add cost" title="Add cost">${icons.coins}</button>
+            <button type="button" class="button button--icon item__action item__attach" data-action="attach-file" aria-label="Attach file" title="Attach file (image, PDF or ZIP) — or drop files on the item">${icons.clip}</button>
+            <button type="button" class="button button--icon item__action item__action--secondary" data-action="edit-item" aria-label="Edit item" title="Edit item">${icons.edit}</button>
+            <button type="button" class="button button--icon button--icon-danger item__action item__action--secondary" data-action="delete-item" aria-label="Delete item" title="Delete item">${icons.trash}</button>
+          </div>
+        </div>
+        ${item.timeLogs.length || item.costs.length ? `
+          <div class="item__meta">
+            ${item.timeLogs.length ? `<button type="button" class="item__time" data-action="log-time" title="Time spent — click to log more">${icons.clock}${formatDuration(sumMinutes([item]))}</button>` : ''}
+            ${item.costs.length ? `<button type="button" class="item__cost" data-action="log-cost" title="Costs — click to add more">${icons.coins}${esc(formatCostTotals(sumCosts([item])))}</button>` : ''}
+          </div>` : ''}
+        ${item.description ? `<p class="item__description">${esc(item.description)}</p>` : ''}
+        ${item.notes ? `
+          <div class="item__notes-preview" data-action="edit-notes" title="${esc(item.notes)}">
+            <span class="item__notes-text">${esc(notesPreview(item.notes))}</span>
+            ${timestampsHTML(item.notesCreatedAt, item.notesUpdatedAt)}
+          </div>` : ''}
+        ${item.attachments.length ? `<ul class="item__attachments">${item.attachments.map(renderAttachment).join('')}</ul>` : ''}
+      </article>`;
+  }
+
+  // First non-empty line of a note, with … when there is more below it
+  function notesPreview(notes) {
+    const lines = notes.split(/\r?\n/);
+    const first = lines.findIndex((l) => l.trim());
+    if (first < 0) return '';
+    const more = lines.slice(first + 1).some((l) => l.trim());
+    return lines[first].trim() + (more ? ' …' : '');
+  }
+
+  function renderAttachment(a) {
+    const kind = fileKind(a);
+    const label = { image: 'Preview', pdf: 'Open', zip: 'Download' }[kind] || 'Open';
+    const visual = kind === 'image'
+      ? `<span class="attachment__thumb"><img data-thumb="${esc(a.id)}" alt=""></span>`
+      : `<span class="attachment__badge attachment__badge--${kind}" aria-hidden="true">${kind === 'file' ? 'FILE' : kind.toUpperCase()}</span>`;
+    return `
+      <li class="attachment attachment--${kind}" data-attachment="${esc(a.id)}">
+        <button type="button" class="attachment__open" data-action="open-attachment" title="${label} ${esc(a.name)}">
+          ${visual}
+          <span class="attachment__info">
+            <span class="attachment__line">
+              <span class="attachment__name">${esc(a.name)}</span>
+              <span class="attachment__size">${formatSize(a.size)}</span>
+            </span>
+            ${timestampsHTML(a.createdAt, a.updatedAt)}
+          </span>
+        </button>
+        <button type="button" class="button button--icon button--icon-danger attachment__remove" data-action="remove-attachment" aria-label="Remove ${esc(a.name)}" title="Remove attachment">${icons.close}</button>
+      </li>`;
+  }
+
+  function renderStage(stage, index) {
+    const done = stage.items.filter((i) => i.done).length;
+    return `
+      <section class="stage" data-stage="${esc(stage.id)}">
+        <div class="stage__header">
+          <div class="stage__heading">
+            <h2 class="stage__title">${esc(stage.title)}</h2>
+            ${stage.description ? `<p class="stage__description">${esc(stage.description)}</p>` : ''}
+          </div>
+          <div class="stage__actions">
+            <button type="button" class="button button--icon" data-action="move-stage-up" aria-label="Move stage up" title="Move stage up" ${index === 0 ? 'disabled' : ''}>${icons.up}</button>
+            <button type="button" class="button button--icon" data-action="move-stage-down" aria-label="Move stage down" title="Move stage down" ${index === checklist.stages.length - 1 ? 'disabled' : ''}>${icons.down}</button>
+            <button type="button" class="button button--icon" data-action="edit-stage" aria-label="Edit stage" title="Edit stage">${icons.edit}</button>
+            <button type="button" class="button button--icon button--icon-danger" data-action="delete-stage" aria-label="Delete stage" title="Delete stage">${icons.trash}</button>
+            <button type="button" class="button button--icon" data-action="add-item" aria-label="Add item" title="Add item">${icons.plus}</button>
+          </div>
+        </div>
+        <div class="stage__grid ${stage.columns >= 5 ? 'stage__grid--dense' : ''}" style="--columns:${stage.columns}">
+          ${stage.items.length ? stage.items.map(renderItem).join('') : '<div class="stage__empty">No items yet — use + to add the first one.</div>'}
+        </div>
+      </section>`;
+  }
+
+  function render() {
+    renderHeader();
+    renderProgressPanel();
+    stagesEl.innerHTML = checklist.stages.length
+      ? checklist.stages.map(renderStage).join('') +
+        `<button type="button" class="add-stage" data-action="add-stage">${icons.plus}Add stage</button>`
+      : `<div class="empty-state">
+           <h2 class="empty-state__title">No stages yet</h2>
+           <p class="empty-state__text">Split this checklist into stages, then add items to each stage.</p>
+           <button type="button" class="button button--primary" data-action="add-stage">${icons.plus}Add stage</button>
+         </div>`;
+    applyPrefs();
+    hydrateAttachments();
+    alignProgressPanel();
+  }
+
+  function applyPrefs() {
+    app.classList.toggle('app--no-descriptions', !prefs.showDescriptions);
+    app.classList.toggle('app--no-notes', !prefs.showNotes);
+    app.classList.toggle('app--no-attachments', !prefs.showAttachments);
+    if (prefs.fullWidth) document.documentElement.dataset.width = 'full'; else delete document.documentElement.dataset.width;
+    applyTheme(prefs.theme);
+    renderSettings();
+  }
+
+  /* ---- Display settings in the toolbar (applied + autosaved on change) ---- */
+  const settingsEl = $('#settings');
+  settingsEl.querySelector('[data-pref="theme"]').innerHTML =
+    THEMES.map((t) => `<option value="${t.id}">${esc(t.label)}</option>`).join('');
+  function renderSettings() {
+    settingsEl.querySelectorAll('[data-pref]').forEach((el) => {
+      const value = prefs[el.dataset.pref];
+      if (el.type === 'checkbox') {
+        el.checked = Boolean(value);
+        el.closest('.toggle-chip').classList.toggle('toggle-chip--on', Boolean(value));
+      } else if (el.value !== value) {
+        el.value = value;
+      }
+    });
+  }
+  settingsEl.addEventListener('change', (e) => {
+    const el = e.target.closest('[data-pref]');
+    if (!el) return;
+    prefs[el.dataset.pref] = el.type === 'checkbox' ? el.checked : el.value;
+    savePrefs();
+    applyPrefs();
+  });
+  // keyboard focus ring on the chip (the checkbox itself is invisible)
+  settingsEl.addEventListener('focusin', (e) => {
+    const chip = e.target.closest('.toggle-chip');
+    if (chip && e.target.matches(':focus-visible')) chip.classList.add('toggle-chip--focus');
+  });
+  settingsEl.addEventListener('focusout', (e) => {
+    const chip = e.target.closest('.toggle-chip');
+    if (chip) chip.classList.remove('toggle-chip--focus');
+  });
+
+  function applyTheme(theme) {
+    const root = document.documentElement;
+    if (theme.startsWith('black')) root.dataset.theme = 'dark'; else delete root.dataset.theme;
+    if (theme.endsWith('-simple')) root.dataset.style = 'simple'; else delete root.dataset.style;
+  }
+
+  function commit() { save(); render(); }
+
+  /* ==================================================================
+     Checklist switcher
+     ================================================================== */
+  const switcherEl = $('#switcher');
+  const switcherPanel = $('#switcherPanel');
+  const switcherToggle = $('#switcherToggle');
+
+  function renderSwitcher() {
+    $('#switcherList').innerHTML = listChecklists().map((c) => {
+      const s = checklistStats(c);
+      const active = c.id === checklist.id;
+      const info = [plural(s.stages, 'stage'), `${s.done}/${s.items} done`, c.updatedAt ? `updated ${formatDate(c.updatedAt)}` : '']
+        .filter(Boolean).join(' · ');
+      return `
+        <li class="switcher__item ${active ? 'switcher__item--active' : ''}">
+          <button type="button" class="switcher__select" data-action="open-checklist" data-checklist="${esc(c.id)}" ${active ? 'aria-current="true"' : ''}>
+            <span class="switcher__title">${esc(c.title || 'Untitled checklist')}</span>
+            <code class="switcher__id">${esc(c.id)}</code>
+            <span class="switcher__info">${esc(info)}</span>
+          </button>
+          <button type="button" class="button button--icon button--icon-danger switcher__delete" data-action="delete-checklist" data-checklist="${esc(c.id)}" aria-label="Delete checklist “${esc(c.title)}”" title="Delete checklist">${icons.trash}</button>
+        </li>`;
+    }).join('');
+  }
+
+  function openSwitcher() {
+    save(); // list the open checklist with its latest title/progress
+    renderSwitcher();
+    switcherPanel.hidden = false;
+    switcherToggle.setAttribute('aria-expanded', 'true');
+  }
+  function closeSwitcher() {
+    switcherPanel.hidden = true;
+    switcherToggle.setAttribute('aria-expanded', 'false');
+  }
+
+  function openChecklist(c) {
+    checklist = c;
+    setActive(c.id);
+    closeSwitcher();
+    render();
+  }
+
+  /* ==================================================================
+     Modal
+     openModal({ title, subtitle, message (html-escaped), messageHTML, fields, html,
+                 submitLabel, danger, cancelLabel, hideCancel, altLabel,
+                 onSubmit(values, formData), onAlt(), onCancel(), onChange(name, checked) })
+     ================================================================== */
+  const modal = $('#modal');
+  const modalForm = $('#modalForm');
+  const modalBody = $('#modalBody');
+  const modalSubmit = $('#modalSubmit');
+  const modalCancel = $('#modalCancel');
+  const modalAlt = $('#modalAlt');
+  let handlers = {};
+
+  function fieldHTML(f) {
+    if (f.type === 'checkbox') {
+      return `
+        <label class="field field--toggle">
+          <span class="field__text">
+            <span class="field__label">${esc(f.label)}</span>
+            ${f.hint ? `<span class="field__hint">${esc(f.hint)}</span>` : ''}
+          </span>
+          <input type="checkbox" role="switch" class="field__switch" name="${f.name}" ${f.value ? 'checked' : ''}>
+        </label>`;
+    }
+    const control = f.type === 'select'
+      ? `<select class="field__select" name="${f.name}">${f.options.map((o) => `<option value="${esc(o.value)}" ${String(o.value) === String(f.value) ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`
+      : f.type === 'textarea'
+      ? `<textarea class="field__textarea ${f.tall ? 'field__textarea--tall' : ''}" name="${f.name}" placeholder="${esc(f.placeholder || '')}">${esc(f.value || '')}</textarea>`
+      : `<input class="field__input" name="${f.name}" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}" ${f.required ? 'required' : ''} autocomplete="off">`;
+    return `<label class="field"><span class="field__label">${esc(f.label)}</span>${control}</label>`;
+  }
+
+  function openModal(o) {
+    $('#modalTitle').textContent = o.title;
+    const sub = $('#modalSubtitle');
+    sub.textContent = o.subtitle || '';
+    sub.hidden = !o.subtitle;
+
+    const message = o.messageHTML || (o.message ? esc(o.message) : '');
+    const fields = o.fields || [];
+    modalBody.innerHTML = (message ? `<p class="modal__message">${message}</p>` : '') + fields.map(fieldHTML).join('') + (o.html || '');
+    modalBody.hidden = !message && !fields.length && !o.html;
+
+    modalSubmit.textContent = o.submitLabel || 'Save';
+    modalSubmit.className = 'button ' + (o.danger ? 'button--danger' : 'button--primary');
+    modalSubmit.disabled = false;
+    modalCancel.textContent = o.cancelLabel || 'Cancel';
+    modalCancel.hidden = Boolean(o.hideCancel);
+    modalAlt.textContent = o.altLabel || '';
+    modalAlt.hidden = !o.altLabel;
+
+    modal.classList.toggle('modal--wide', Boolean(o.wide));
+    handlers = { submit: o.onSubmit, alt: o.onAlt, cancel: o.onCancel, change: o.onChange };
+    if (!modal.open) modal.showModal();
+    const first = modalBody.querySelector('input:not([type="checkbox"]), textarea');
+    if (first) { first.focus(); const len = first.value.length; first.setSelectionRange(len, len); }
+    else modalSubmit.focus();
+  }
+
+  // Close the modal, then run exactly one handler (it may open the next modal)
+  function finishModal(kind, ...args) {
+    const h = handlers[kind];
+    handlers = {};
+    modal.close();
+    if (h) h(...args);
+  }
+
+  modalForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const formData = new FormData(modalForm);
+    finishModal('submit', Object.fromEntries(formData.entries()), formData);
+  });
+  modalAlt.addEventListener('click', () => finishModal('alt'));
+  modal.addEventListener('click', (e) => {
+    if (e.target.closest('[data-modal-dismiss]') || e.target === modal) finishModal('cancel');
+  });
+  modal.addEventListener('cancel', (e) => { e.preventDefault(); finishModal('cancel'); }); // Escape key
+  modal.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); modalForm.requestSubmit(); }
+  });
+  modalBody.addEventListener('change', (e) => {
+    if (!handlers.change) return;
+    if (e.target.type === 'checkbox') handlers.change(e.target.name, e.target.checked);
+    else if (e.target.type === 'radio' && e.target.checked) handlers.change(e.target.name, e.target.value);
+  });
+
+  /* ==================================================================
+     Attachments
+     Files are stored as Blobs in IndexedDB (localStorage is text-only and ~5 MB).
+     Items only keep { id, name, type, size }. Files no longer referenced by any
+     saved checklist are garbage-collected (gcFiles).
+     ================================================================== */
+  const fileStore = (() => {
+    let dbPromise = null;
+    function db() {
+      if (!dbPromise) {
+        dbPromise = new Promise((resolve, reject) => {
+          if (!window.indexedDB) { reject(new Error('IndexedDB is not available in this browser.')); return; }
+          const req = indexedDB.open('checklist-app', 1);
+          req.onupgradeneeded = () => req.result.createObjectStore('files', { keyPath: 'id' });
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+        dbPromise.catch(() => { dbPromise = null; });
+      }
+      return dbPromise;
+    }
+    // Run `fn(store)` in one transaction; resolves with the last request's result once committed
+    const run = (mode, fn) => db().then((d) => new Promise((resolve, reject) => {
+      const tx = d.transaction('files', mode);
+      let result;
+      const req = fn(tx.objectStore('files'));
+      if (req) req.onsuccess = () => { result = req.result; };
+      tx.oncomplete = () => resolve(result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('Storage transaction aborted.'));
+    }));
+    return {
+      putMany: (records) => run('readwrite', (s) => { records.forEach((r) => s.put(r)); }),
+      get: (id) => run('readonly', (s) => s.get(id)),
+      getAll: () => run('readonly', (s) => s.getAll()),
+      removeMany: (ids) => run('readwrite', (s) => { ids.forEach((id) => s.delete(id)); })
+    };
+  })();
+
+  const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg|ico)$/i;
+  function fileKind(f) {
+    const type = (f.type || '').toLowerCase();
+    const name = f.name || '';
+    if (type.startsWith('image/') || IMAGE_EXT.test(name)) return 'image';
+    if (type === 'application/pdf' || /\.pdf$/i.test(name)) return 'pdf';
+    if (type.includes('zip') || /\.zip$/i.test(name)) return 'zip';
+    return 'file';
+  }
+  const isAllowedFile = (f) => fileKind(f) !== 'file';
+  function guessType(name) {
+    const ext = (name.match(/\.([a-z0-9]+)$/i) || [])[1];
+    const map = { pdf: 'application/pdf', zip: 'application/zip', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+      gif: 'image/gif', webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp', svg: 'image/svg+xml', ico: 'image/x-icon' };
+    return map[(ext || '').toLowerCase()] || 'application/octet-stream';
+  }
+  function formatSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ['KB', 'MB', 'GB'];
+    let n = bytes / 1024, u = 0;
+    while (n >= 1024 && u < units.length - 1) { n /= 1024; u++; }
+    return `${n < 10 ? n.toFixed(1) : Math.round(n)} ${units[u]}`;
+  }
+  const newFileId = () => 'f' + randomId() + randomId();
+  const allAttachments = (c) => c.stages.flatMap((s) => s.items.flatMap((i) => i.attachments));
+
+  // Object URLs for stored files (created once per session, reused for thumbnails/open)
+  const fileUrls = new Map();
+  const fileUrlRequests = new Map();
+  function getFileUrl(id) {
+    if (fileUrls.has(id)) return Promise.resolve(fileUrls.get(id));
+    if (!fileUrlRequests.has(id)) {
+      fileUrlRequests.set(id, fileStore.get(id)
+        .then((rec) => {
+          if (!rec || !rec.blob) return null;
+          const url = URL.createObjectURL(rec.blob);
+          fileUrls.set(id, url);
+          return url;
+        })
+        .catch(() => null)
+        .finally(() => fileUrlRequests.delete(id)));
+    }
+    return fileUrlRequests.get(id);
+  }
+  function revokeFileUrl(id) {
+    const url = fileUrls.get(id);
+    if (url) { URL.revokeObjectURL(url); fileUrls.delete(id); }
+  }
+
+  // After each render: load thumbnails and flag attachments whose file isn't in this browser
+  function hydrateAttachments() {
+    stagesEl.querySelectorAll('.attachment[data-attachment]').forEach((el) => {
+      const id = el.dataset.attachment;
+      getFileUrl(id).then((url) => {
+        if (!el.isConnected) return;
+        el.classList.toggle('attachment--missing', !url);
+        const img = el.querySelector('img[data-thumb]');
+        if (img && url && img.getAttribute('src') !== url) img.src = url;
+      });
+    });
+  }
+
+  let persistRequested = false;
+  function requestPersistentStorage() {
+    if (persistRequested) return;
+    persistRequested = true;
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) { /* ignore */ }
+  }
+
+  const storageError = (err) => (err && err.name === 'QuotaExceededError')
+    ? 'Not enough browser storage for this file.'
+    : 'Could not store the file in this browser' + (err && err.message ? `: ${err.message}` : '.');
+
+  async function addAttachments(stageId, itemId, files) {
+    const allowed = files.filter(isAllowedFile);
+    const rejected = files.length - allowed.length;
+    if (!allowed.length) { toast('Only images, PDFs and ZIP files can be attached.', true); return; }
+    const records = allowed.map((f) => {
+      const name = f.name || 'file';
+      return { id: newFileId(), blob: f, name, type: f.type || guessType(name), size: f.size, created: Date.now() };
+    });
+    try { await fileStore.putMany(records); }
+    catch (err) { toast(storageError(err), true); return; }
+    requestPersistentStorage();
+    const item = findItem(findStage(stageId), itemId); // the checklist may have changed meanwhile
+    if (!item) { scheduleGc(); return; }
+    const now = new Date().toISOString();
+    item.attachments.push(...records.map((r) => normalizeAttachment({ ...r, createdAt: now, updatedAt: now })));
+    commit();
+    toast(`Attached ${plural(records.length, 'file')}` + (rejected ? ` · ${rejected} skipped (only images, PDFs and ZIPs)` : ''), rejected > 0);
+  }
+
+  function downloadUrl(url, filename) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  async function openAttachment(a) {
+    const kind = fileKind(a);
+    const url = await getFileUrl(a.id);
+    if (!url) {
+      toast('This file isn’t stored in this browser (e.g. it was exported without attachments).', true);
+      hydrateAttachments();
+      return;
+    }
+    if (kind === 'zip' || kind === 'file') { downloadUrl(url, a.name); return; }
+    openModal({
+      title: a.name,
+      subtitle: [`${kind === 'pdf' ? 'PDF' : 'Image'} · ${formatSize(a.size)}`, timestampsLong(a.createdAt, a.updatedAt)].filter(Boolean).join(' · '),
+      wide: true,
+      html: kind === 'image'
+        ? `<div class="attachment-preview"><img class="attachment-preview__img" src="${url}" alt="${esc(a.name)}"></div>`
+        : `<div class="attachment-preview"><iframe class="attachment-preview__frame" src="${url}" title="${esc(a.name)}"></iframe></div>`,
+      cancelLabel: 'Close',
+      altLabel: 'Open in new tab',
+      submitLabel: 'Download',
+      onSubmit: () => downloadUrl(url, a.name),
+      onAlt: () => { if (!window.open(url, '_blank')) downloadUrl(url, a.name); }
+    });
+  }
+
+  // Delete stored files that no saved checklist references any more.
+  // Files created in the last minute are kept (they may be about to be referenced).
+  function referencedFileIds() {
+    const ids = new Set(allAttachments(checklist).map((a) => a.id));
+    savedIds().forEach((id) => {
+      const c = readChecklist(id);
+      if (c) allAttachments(c).forEach((a) => ids.add(a.id));
+    });
+    return ids;
+  }
+  async function gcFiles() {
+    try {
+      const records = await fileStore.getAll();
+      const refs = referencedFileIds();
+      const cutoff = Date.now() - 60000;
+      const dead = records.filter((r) => !refs.has(r.id) && (r.created || 0) < cutoff).map((r) => r.id);
+      if (!dead.length) return;
+      await fileStore.removeMany(dead);
+      dead.forEach(revokeFileUrl);
+    } catch (e) { /* storage unavailable: nothing to clean */ }
+  }
+  let gcTimer;
+  function scheduleGc(delay = 1500) { clearTimeout(gcTimer); gcTimer = setTimeout(gcFiles, delay); }
+
+  // Export / import helpers: files travel as base64 inside the JSON
+  const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+  function base64ToBlob(b64, type) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type });
+  }
+  async function filesForExport(c) {
+    const ids = Array.from(new Set(allAttachments(c).map((a) => a.id)));
+    const files = [];
+    let missing = 0;
+    for (const id of ids) {
+      const rec = await fileStore.get(id).catch(() => null);
+      if (!rec || !rec.blob) { missing++; continue; }
+      files.push({ id, name: rec.name, type: rec.type, size: rec.size, data: await blobToBase64(rec.blob) });
+    }
+    return { files, missing };
+  }
+  // Store the files embedded in imported checklists; returns how many could not be stored
+  async function storeImportedFiles(list) {
+    const records = [];
+    let failed = 0;
+    list.forEach((c) => (c.importFiles || []).forEach((f) => {
+      try {
+        const name = str(f.name) || 'file';
+        const type = str(f.type) || guessType(name);
+        const blob = base64ToBlob(f.data.replace(/^data:[^,]*,/, ""), type);
+        records.push({ id: f.id, blob, name, type, size: blob.size, created: Date.now() });
+      } catch (e) { failed++; }
+    }));
+    if (!records.length) return failed;
+    try { await fileStore.putMany(records); records.forEach((r) => revokeFileUrl(r.id)); requestPersistentStorage(); }
+    catch (e) { failed += records.length; }
+    return failed;
+  }
+
+  // Drag & drop files onto an item to attach them
+  const dragHasFiles = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+  stagesEl.addEventListener('dragover', (e) => {
+    const itemEl = e.target.closest('.item');
+    if (!itemEl || !dragHasFiles(e) || !prefs.showAttachments) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    stagesEl.querySelectorAll('.item--dragover').forEach((el) => { if (el !== itemEl) el.classList.remove('item--dragover'); });
+    itemEl.classList.add('item--dragover');
+  });
+  stagesEl.addEventListener('dragleave', (e) => {
+    const itemEl = e.target.closest('.item');
+    if (itemEl && !itemEl.contains(e.relatedTarget)) itemEl.classList.remove('item--dragover');
+  });
+  stagesEl.addEventListener('drop', (e) => {
+    const itemEl = e.target.closest('.item');
+    if (!itemEl || !dragHasFiles(e) || !prefs.showAttachments) return;
+    e.preventDefault();
+    itemEl.classList.remove('item--dragover');
+    const stageEl = itemEl.closest('[data-stage]');
+    addAttachments(stageEl.dataset.stage, itemEl.dataset.item, Array.from(e.dataTransfer.files));
+  });
+  // Dropping a file elsewhere must not navigate away from the app
+  window.addEventListener('dragover', (e) => { if (dragHasFiles(e)) e.preventDefault(); });
+  window.addEventListener('drop', (e) => { if (dragHasFiles(e)) e.preventDefault(); });
+
+  let attachTarget = null;
+  $('#attachInput').addEventListener('change', (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (files.length && attachTarget) addAttachments(attachTarget.stageId, attachTarget.itemId, files);
+    attachTarget = null;
+  });
+
+  /* ==================================================================
+     Actions (dispatched from [data-action] clicks)
+     ================================================================== */
+  const actions = {
+    /* ---- Checklists ---- */
+    'new-checklist'() {
+      save();
+      const c = blankChecklist();
+      writeChecklist(c);
+      openChecklist(c);
+      titleEl.focus();
+      document.execCommand('selectAll', false, null);
+      toast(`New checklist created (${c.id})`);
+    },
+    'clone-checklist'() {
+      save();
+      // Deep copy with fresh ids; attachments keep pointing at the same stored files
+      // (files are shared and only deleted once no checklist references them).
+      const copy = normalizeChecklist(JSON.parse(JSON.stringify({
+        ...checklist,
+        title: `${checklist.title || 'Untitled checklist'} (copy)`,
+        stages: checklist.stages.map((s) => ({ ...s, id: uid(), items: s.items.map((i) => ({ ...i, id: uid() })) }))
+      })), newChecklistId());
+      if (!writeChecklist(copy)) { toast('Could not save the copy: browser storage is full or unavailable.', true); return; }
+      openChecklist(copy);
+      toast(`Cloned as “${copy.title}” (${copy.id})`);
+    },
+    'open-checklist'({ el }) {
+      const id = el.dataset.checklist;
+      if (id === checklist.id) { closeSwitcher(); return; }
+      save();
+      const c = readChecklist(id);
+      if (!c) { toast('That checklist no longer exists.', true); renderSwitcher(); return; }
+      openChecklist(c);
+    },
+    'delete-checklist'({ el }) {
+      const c = readChecklist(el.dataset.checklist);
+      if (!c) { renderSwitcher(); return; }
+      closeSwitcher();
+      openModal({
+        title: 'Delete checklist?',
+        messageHTML: `<strong>${esc(c.title || 'Untitled checklist')}</strong> (${esc(c.id)}) and all its stages will be removed from this browser permanently.`,
+        submitLabel: 'Delete', danger: true,
+        onSubmit: () => {
+          store.remove(CHECKLIST_PREFIX + c.id);
+          scheduleGc();
+          if (c.id === checklist.id) {
+            const next = listChecklists()[0] || blankChecklist();
+            if (!next.updatedAt) writeChecklist(next);
+            openChecklist(next);
+          } else {
+            render();
+          }
+          toast('Checklist deleted');
+        }
+      });
+    },
+    'toggle-switcher'() { switcherPanel.hidden ? openSwitcher() : closeSwitcher(); },
+    'copy-id'() {
+      const ok = () => toast('Checklist ID copied');
+      const fail = () => toast(`Checklist ID: ${checklist.id}`);
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(checklist.id).then(ok, fail);
+        else fail();
+      } catch (e) { fail(); }
+    },
+
+    /* ---- Stages ---- */
+    'add-stage'() {
+      openModal({
+        title: 'New stage', subtitle: checklist.title, submitLabel: 'Add stage',
+        fields: [
+          { name: 'title', label: 'Title', required: true, placeholder: 'e.g. Preparation' },
+          { name: 'description', label: 'Description', type: 'textarea', placeholder: 'What happens in this stage?' },
+          columnsField(3)
+        ],
+        onSubmit: (v) => {
+          checklist.stages.push(normalizeStage({ title: v.title.trim(), description: v.description.trim(), columns: parseColumns(v.columns) }));
+          commit();
+        }
+      });
+    },
+    'edit-stage'({ stage }) {
+      openModal({
+        title: 'Edit stage',
+        fields: [
+          { name: 'title', label: 'Title', required: true, value: stage.title },
+          { name: 'description', label: 'Description', type: 'textarea', value: stage.description },
+          columnsField(stage.columns)
+        ],
+        onSubmit: (v) => {
+          stage.title = v.title.trim();
+          stage.description = v.description.trim();
+          stage.columns = parseColumns(v.columns);
+          commit();
+        }
+      });
+    },
+    'delete-stage'({ stage }) {
+      openModal({
+        title: 'Delete stage?',
+        messageHTML: `<strong>${esc(stage.title)}</strong> and its ${plural(stage.items.length, 'item')} will be removed permanently.`,
+        submitLabel: 'Delete', danger: true,
+        onSubmit: () => { checklist.stages = checklist.stages.filter((s) => s !== stage); commit(); scheduleGc(); toast('Stage deleted'); }
+      });
+    },
+    'move-stage-up'({ stage }) { moveStage(stage, -1); },
+    'move-stage-down'({ stage }) { moveStage(stage, 1); },
+
+    /* ---- Items ---- */
+    'add-item'({ stage }) {
+      openModal({
+        title: 'New item', subtitle: stage.title, submitLabel: 'Add item',
+        fields: [
+          { name: 'title', label: 'Title', required: true, placeholder: 'What needs doing?' },
+          { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional details' }
+        ],
+        onSubmit: (v) => {
+          stage.items.push(normalizeItem({ title: v.title.trim(), description: v.description.trim() }));
+          commit();
+        }
+      });
+    },
+    'edit-item'({ stage, item }) {
+      openModal({
+        title: 'Edit item', subtitle: stage.title,
+        fields: [
+          { name: 'title', label: 'Title', required: true, value: item.title },
+          { name: 'description', label: 'Description', type: 'textarea', value: item.description }
+        ],
+        onSubmit: (v) => { item.title = v.title.trim(); item.description = v.description.trim(); commit(); }
+      });
+    },
+    'delete-item'({ stage, item }) {
+      openModal({
+        title: 'Delete item?',
+        messageHTML: `<strong>${esc(item.title)}</strong>${item.attachments.length ? ` and its ${plural(item.attachments.length, 'attachment')}` : ''} will be removed permanently.`,
+        submitLabel: 'Delete', danger: true,
+        onSubmit: () => { stage.items = stage.items.filter((i) => i !== item); commit(); scheduleGc(); }
+      });
+    },
+    'log-time'({ stage, item }) { openTimeLog(stage, item); },
+    'log-cost'({ item }) { openCosts(item); },
+    'attach-file'({ stage, item }) {
+      attachTarget = { stageId: stage.id, itemId: item.id };
+      $('#attachInput').click();
+    },
+    'open-attachment'({ item, el }) {
+      const a = item.attachments.find((x) => x.id === el.closest('[data-attachment]').dataset.attachment);
+      if (a) openAttachment(a);
+    },
+    'remove-attachment'({ item, el }) {
+      const a = item.attachments.find((x) => x.id === el.closest('[data-attachment]').dataset.attachment);
+      if (!a) return;
+      openModal({
+        title: 'Remove attachment?',
+        messageHTML: `<strong>${esc(a.name)}</strong> will be removed from <strong>${esc(item.title)}</strong>.`,
+        submitLabel: 'Remove', danger: true,
+        onSubmit: () => { item.attachments = item.attachments.filter((x) => x !== a); commit(); scheduleGc(); }
+      });
+    },
+    'scroll-to-stage'({ el }) {
+      const target = stagesEl.querySelector(`[data-stage="${CSS.escape(el.dataset.target)}"]`);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    'move-item-left'({ stage, item }) { moveItem(stage, item, -1, 'move-item-left'); },
+    'move-item-right'({ stage, item }) { moveItem(stage, item, 1, 'move-item-right'); },
+    'toggle-item'({ item }) { item.done = !item.done; commit(); },
+    'edit-notes'({ item }) {
+      openModal({
+        title: 'Notes',
+        subtitle: [item.title, timestampsLong(item.notesCreatedAt, item.notesUpdatedAt)].filter(Boolean).join(' · '),
+        fields: [{ name: 'notes', label: 'Notes', type: 'textarea', tall: true, value: item.notes, placeholder: 'Write anything useful… (Ctrl/⌘ + Enter to save)' }],
+        onSubmit: (v) => {
+          const notes = v.notes.replace(/\s+$/, '');
+          if (notes === item.notes) return; // unchanged → keep dates as they are
+          const now = new Date().toISOString();
+          if (!notes) { item.notesCreatedAt = ''; item.notesUpdatedAt = ''; }
+          else { if (!item.notes || !item.notesCreatedAt) item.notesCreatedAt = now; item.notesUpdatedAt = now; }
+          item.notes = notes;
+          commit();
+        }
+      });
+    },
+
+    /* ---- Import / export ---- */
+    'import'() { $('#importInput').click(); },
+    'export'() { openExportModal(); }
+  };
+
+  /* ---- Time log: add entries in minutes or hours, remove existing ones ---- */
+  let lastTimeUnit = 'minutes';
+  function timeLogListHTML(item) {
+    const total = sumMinutes([item]);
+    const entries = item.timeLogs.slice().reverse(); // newest first
+    return `
+      <div class="time-log__summary"><span>Total time spent</span><span class="time-log__total">${formatDuration(total)}</span></div>
+      ${entries.length ? `<ul class="time-log__list">${entries.map((t) => `
+        <li class="time-log__entry">
+          <span class="time-log__amount">${formatDuration(t.minutes)}</span>
+          <span class="time-log__note" title="${esc(t.note)}">${esc(t.note)}</span>
+          <span class="time-log__date">${t.loggedAt ? esc(formatDMYTime(t.loggedAt)) : ''}</span>
+          <button type="button" class="button button--icon button--icon-danger time-log__remove" data-log="${esc(t.id)}" aria-label="Remove entry" title="Remove entry">${icons.close}</button>
+        </li>`).join('')}</ul>` : '<p class="time-log__empty">Nothing logged yet.</p>'}`;
+  }
+  function openTimeLog(stage, item) {
+    openModal({
+      title: 'Log time',
+      subtitle: item.title,
+      submitLabel: 'Log time',
+      cancelLabel: 'Close',
+      html: `
+        <div class="time-log">
+          <div class="time-log__inputs">
+            <label class="field">
+              <span class="field__label">Time spent</span>
+              <input class="field__input" name="amount" inputmode="decimal" autocomplete="off" required
+                     pattern="\\s*\\d+([.,]\\d+)?\\s*" placeholder="e.g. 30 or 1.5" title="A number, e.g. 30 or 1.5">
+            </label>
+            <label class="field">
+              <span class="field__label">Unit</span>
+              <select class="field__select" name="unit">
+                <option value="minutes" ${lastTimeUnit === 'minutes' ? 'selected' : ''}>Minutes</option>
+                <option value="hours" ${lastTimeUnit === 'hours' ? 'selected' : ''}>Hours</option>
+              </select>
+            </label>
+          </div>
+          <label class="field">
+            <span class="field__label">Note (optional)</span>
+            <input class="field__input" name="note" autocomplete="off" placeholder="What did you work on?">
+          </label>
+          <div id="timeLogEntries">${timeLogListHTML(item)}</div>
+        </div>`,
+      onSubmit: (v) => {
+        lastTimeUnit = v.unit === 'hours' ? 'hours' : 'minutes';
+        const amount = Number(String(v.amount).trim().replace(',', '.'));
+        const minutes = Math.round(amount * (lastTimeUnit === 'hours' ? 60 : 1));
+        if (!(minutes > 0)) { toast('Enter a time of at least 1 minute.', true); return; }
+        item.timeLogs.push({ id: uid(), minutes, note: String(v.note || '').trim(), loggedAt: new Date().toISOString() });
+        commit();
+        toast(`Logged ${formatDuration(minutes)} · total ${formatDuration(sumMinutes([item]))}`);
+      }
+    });
+    // Remove entries in place (the list element is recreated on every open)
+    const box = $('#timeLogEntries');
+    box.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-log]');
+      if (!btn) return;
+      item.timeLogs = item.timeLogs.filter((t) => t.id !== btn.dataset.log);
+      commit();
+      box.innerHTML = timeLogListHTML(item);
+    });
+  }
+
+  /* ---- Costs: add entries (type, amount + currency, text), remove existing ones ---- */
+  let lastCurrency = DEFAULT_CURRENCY;
+  let lastCostType = 'other';
+  function costListHTML(item) {
+    const totals = sumCosts([item]);
+    const entries = item.costs.slice().reverse(); // newest first
+    const typeLabel = (id) => (COST_TYPES.find((t) => t.id === id) || COST_TYPES[2]).label;
+    return `
+      <div class="time-log__summary"><span>Total costs</span><span class="time-log__total">${totals.length ? esc(formatCostTotals(totals)) : formatMoney(0, lastCurrency)}</span></div>
+      ${entries.length ? `<ul class="time-log__list">${entries.map((c) => `
+        <li class="time-log__entry">
+          <span class="time-log__amount">${esc(formatMoney(c.amount, c.currency))}</span>
+          <span class="time-log__type">${esc(typeLabel(c.type))}</span>
+          <span class="time-log__note" title="${esc(c.note)}">${esc(c.note)}</span>
+          <span class="time-log__date">${c.loggedAt ? esc(formatDMYTime(c.loggedAt)) : ''}</span>
+          <button type="button" class="button button--icon button--icon-danger time-log__remove" data-log="${esc(c.id)}" aria-label="Remove cost" title="Remove cost">${icons.close}</button>
+        </li>`).join('')}</ul>` : '<p class="time-log__empty">No costs yet.</p>'}`;
+  }
+  function openCosts(item) {
+    openModal({
+      title: 'Costs',
+      subtitle: item.title,
+      submitLabel: 'Add cost',
+      cancelLabel: 'Close',
+      html: `
+        <div class="time-log">
+          <div class="time-log__inputs time-log__inputs--cost">
+            <label class="field">
+              <span class="field__label">Amount</span>
+              <input class="field__input" name="amount" inputmode="decimal" autocomplete="off" required
+                     pattern="\\s*\\d+([.,]\\d{1,2})?\\s*" placeholder="e.g. 12.50" title="A number with up to 2 decimals, e.g. 12.50">
+            </label>
+            <label class="field">
+              <span class="field__label">Currency</span>
+              <select class="field__select" name="currency">
+                ${CURRENCIES.map((c) => `<option value="${c}" ${c === lastCurrency ? 'selected' : ''}>${c}</option>`).join('')}
+              </select>
+            </label>
+            <label class="field">
+              <span class="field__label">Type</span>
+              <select class="field__select" name="type">
+                ${COST_TYPES.map((t) => `<option value="${t.id}" ${t.id === lastCostType ? 'selected' : ''}>${t.label}</option>`).join('')}
+              </select>
+            </label>
+          </div>
+          <label class="field">
+            <span class="field__label">Text</span>
+            <input class="field__input" name="note" autocomplete="off" placeholder="e.g. Gas station on the A7">
+          </label>
+          <div id="costEntries">${costListHTML(item)}</div>
+        </div>`,
+      onSubmit: (v) => {
+        lastCurrency = CURRENCIES.includes(v.currency) ? v.currency : DEFAULT_CURRENCY;
+        lastCostType = COST_TYPES.some((t) => t.id === v.type) ? v.type : 'other';
+        const cost = normalizeCost({
+          type: lastCostType,
+          amount: String(v.amount).trim().replace(',', '.'),
+          currency: lastCurrency,
+          note: String(v.note || '').trim(),
+          loggedAt: new Date().toISOString()
+        });
+        if (!cost) { toast('Enter an amount greater than 0.', true); return; }
+        item.costs.push(cost);
+        commit();
+        toast(`Added ${formatMoney(cost.amount, cost.currency)} · total ${formatCostTotals(sumCosts([item]))}`);
+      }
+    });
+    const box = $('#costEntries');
+    box.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-log]');
+      if (!btn) return;
+      item.costs = item.costs.filter((c) => c.id !== btn.dataset.log);
+      commit();
+      box.innerHTML = costListHTML(item);
+    });
+  }
+
+  const columnsField = (value) => ({
+    name: 'columns', label: 'Columns', type: 'select', value,
+    options: COLUMN_OPTIONS.map((n) => ({ value: n, label: `${n} column${n > 1 ? 's' : ''}` }))
+  });
+
+  function moveStage(stage, dir) {
+    const i = checklist.stages.indexOf(stage);
+    const j = i + dir;
+    if (j < 0 || j >= checklist.stages.length) return;
+    [checklist.stages[i], checklist.stages[j]] = [checklist.stages[j], checklist.stages[i]];
+    commit();
+  }
+
+  /* ==================================================================
+     Export
+     - 1 checklist  → { app, version, type: "checklist", id, title, …, stages }
+     - N checklists → { app, version, type: "checklists", exportedAt, checklists: [ … ] }
+     ================================================================== */
+  const slugify = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+  function downloadJSON(data, filename) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  const exportable = (c) => ({ id: c.id, title: c.title, description: c.description, updatedAt: c.updatedAt, stages: c.stages });
+
+  // includeFiles → each exported checklist gets `files: [{ id, name, type, size, data (base64) }]`
+  async function exportChecklists(list, includeFiles) {
+    const out = list.map(exportable);
+    let missing = 0;
+    if (includeFiles && list.some((c) => allAttachments(c).length)) {
+      toast('Preparing export with attachments…');
+      try {
+        for (let k = 0; k < list.length; k++) {
+          const r = await filesForExport(list[k]);
+          missing += r.missing;
+          if (r.files.length) out[k].files = r.files;
+        }
+      } catch (e) { toast('Could not read attachments for the export.', true); return; }
+    }
+    const note = missing ? ` (${plural(missing, 'attachment')} not found in this browser)` : '';
+    if (list.length === 1) {
+      const c = list[0];
+      downloadJSON({ app: 'checklist-app', version: 1, type: 'checklist', ...out[0] }, `${slugify(c.title) || 'checklist'}-${c.id}.json`);
+      toast(`Exported “${c.title || 'Untitled checklist'}”${note}`, missing > 0);
+      return;
+    }
+    const now = new Date().toISOString();
+    downloadJSON(
+      { app: 'checklist-app', version: 1, type: 'checklists', exportedAt: now, checklists: out },
+      `checklists-${list.length}-${now.slice(0, 10)}.json`
+    );
+    toast(`Exported ${list.length} checklists${note}`, missing > 0);
+  }
+
+  function openExportModal() {
+    save(); // include the latest edits of the open checklist
+    const all = listChecklists();
+    const rows = all.map((c) => {
+      const s = checklistStats(c);
+      const current = c.id === checklist.id;
+      return `
+        <li>
+          <label class="pick-list__row">
+            <input type="checkbox" class="pick-list__check" name="checklist" value="${esc(c.id)}" ${current ? 'checked' : ''}>
+            <span class="pick-list__text">
+              <span class="pick-list__title">${esc(c.title || 'Untitled checklist')}${current ? '<span class="pick-list__badge">Current</span>' : ''}</span>
+              <span class="pick-list__meta"><code class="pick-list__id">${esc(c.id)}</code> · ${plural(s.stages, 'stage')} · ${s.done}/${s.items} done</span>
+            </span>
+          </label>
+        </li>`;
+    }).join('');
+
+    openModal({
+      title: 'Export checklists',
+      subtitle: 'Select the checklists to include in the JSON file',
+      submitLabel: 'Export',
+      html: `
+        <div class="pick-list" id="exportList">
+          <div class="pick-list__bar">
+            <span class="pick-list__count" id="exportCount"></span>
+            <button type="button" class="button button--ghost pick-list__toggle" id="exportToggleAll"></button>
+          </div>
+          <ul class="pick-list__items">${rows}</ul>
+        </div>
+        ${fieldHTML({ name: 'includeFiles', type: 'checkbox', label: 'Include attachments', hint: 'Embed attached images, PDFs and ZIPs in the JSON (makes the file larger)', value: true })}`,
+      onSubmit: (values, formData) => {
+        const ids = formData.getAll('checklist');
+        const selected = all.filter((c) => ids.includes(c.id));
+        if (selected.length) exportChecklists(selected, formData.has('includeFiles'));
+      }
+    });
+
+    // Select all / none + live count (elements are recreated on every open)
+    const list = $('#exportList');
+    const boxes = Array.from(list.querySelectorAll('.pick-list__check'));
+    const toggleAll = $('#exportToggleAll');
+    const sync = () => {
+      const n = boxes.filter((b) => b.checked).length;
+      boxes.forEach((b) => b.closest('.pick-list__row').classList.toggle('pick-list__row--checked', b.checked));
+      $('#exportCount').textContent = `${n} of ${boxes.length} selected`;
+      toggleAll.textContent = n === boxes.length ? 'Select none' : 'Select all';
+      modalSubmit.disabled = n === 0;
+    };
+    toggleAll.addEventListener('click', () => {
+      const selectAll = boxes.some((b) => !b.checked);
+      boxes.forEach((b) => { b.checked = selectAll; });
+      sync();
+    });
+    list.addEventListener('change', sync);
+    sync();
+  }
+
+  /* ==================================================================
+     Import
+     For every checklist in the file:
+       - id not saved yet → add it
+       - id already saved → ask for confirmation to override (Override / Skip / Override all)
+     ================================================================== */
+  function parseImportFile(parsed) {
+    let raws;
+    if (Array.isArray(parsed)) raws = parsed;
+    else if (parsed && parsed.type === 'checklists' && Array.isArray(parsed.checklists)) raws = parsed.checklists;
+    else if (parsed && Array.isArray(parsed.documents)) raws = parsed.documents; // earlier multi-export format
+    else raws = [parsed];
+    if (!raws.length) throw new Error('Invalid file: no checklists found.');
+
+    const list = raws.map((raw) => {
+      const c = normalizeChecklist(raw);
+      // embedded attachment files (not saved with the checklist; stored in IndexedDB on import)
+      c.importFiles = Array.isArray(raw.files)
+        ? raw.files.filter((f) => f && isFileId(f.id) && typeof f.data === 'string')
+        : [];
+      return c;
+    });
+    // ids must also be unique within the file itself
+    const seen = new Set();
+    list.forEach((c) => {
+      if (seen.has(c.id)) c.id = newChecklistId(Array.from(seen));
+      seen.add(c.id);
+    });
+    return list;
+  }
+
+  function importChecklists(list, filesFailed = 0) {
+    save();
+    const added = [];
+    const overridden = [];
+    const skipped = [];
+    const failed = [];
+    const conflicts = [];
+
+    list.forEach((c) => {
+      if (readChecklist(c.id)) conflicts.push(c);
+      else if (writeChecklist(c)) added.push(c);
+      else failed.push(c);
+    });
+
+    const override = (c) => { (writeChecklist(c) ? overridden : failed).push(c); };
+
+    const finish = () => {
+      const touched = added.concat(overridden);
+      if (touched.length) {
+        // Re-open the current checklist if it was overridden, otherwise the first imported one
+        const target = touched.find((c) => c.id === checklist.id) || touched[0];
+        openChecklist(readChecklist(target.id) || target);
+      } else {
+        render();
+      }
+      const parts = [];
+      if (added.length) parts.push(`${added.length} added`);
+      if (overridden.length) parts.push(`${overridden.length} overridden`);
+      if (skipped.length) parts.push(`${skipped.length} skipped`);
+      if (failed.length) parts.push(`${failed.length} failed`);
+      if (filesFailed) parts.push(`${plural(filesFailed, 'attachment')} could not be stored`);
+      toast(`Import: ${parts.join(' · ') || 'nothing imported'}`, failed.length > 0 || filesFailed > 0);
+      scheduleGc(65000); // drop files of skipped / overridden checklists once they're no longer recent
+    };
+
+    const ask = (index) => {
+      if (index >= conflicts.length) { finish(); return; }
+      const incoming = conflicts[index];
+      const existing = readChecklist(incoming.id);
+      const remaining = conflicts.length - index;
+      openModal({
+        title: 'Override checklist?',
+        subtitle: conflicts.length > 1 ? `Conflict ${index + 1} of ${conflicts.length}` : '',
+        messageHTML:
+          `A checklist with ID <strong>${esc(incoming.id)}</strong> already exists: ` +
+          `<strong>${esc(existing ? existing.title || 'Untitled checklist' : incoming.id)}</strong>` +
+          (existing && existing.updatedAt ? ` (updated ${esc(formatDate(existing.updatedAt))})` : '') +
+          `.<br><br>Override it with the imported <strong>${esc(incoming.title || 'Untitled checklist')}</strong> ` +
+          `(${plural(incoming.stages.length, 'stage')})? This cannot be undone.`,
+        submitLabel: 'Override', danger: true,
+        cancelLabel: 'Skip',
+        altLabel: remaining > 1 ? `Override all ${remaining}` : '',
+        onSubmit: () => { override(incoming); ask(index + 1); },
+        onAlt: () => { conflicts.slice(index).forEach(override); finish(); },
+        onCancel: () => { skipped.push(incoming); ask(index + 1); }
+      });
+    };
+
+    ask(0);
+  }
+
+  $('#importInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let list;
+      try { list = parseImportFile(JSON.parse(reader.result)); }
+      catch (err) { toast(err.message.startsWith('Invalid') ? err.message : 'Could not parse JSON file.', true); return; }
+      storeImportedFiles(list).then((filesFailed) => importChecklists(list, filesFailed));
+    };
+    reader.onerror = () => toast('Could not read file.', true);
+    reader.readAsText(file);
+  });
+
+  /* ==================================================================
+     Events
+     ================================================================== */
+  document.addEventListener('click', (e) => {
+    // Close the switcher when clicking anywhere outside it
+    if (!switcherPanel.hidden && !switcherEl.contains(e.target)) closeSwitcher();
+
+    const el = e.target.closest('[data-action]');
+    if (!el || el.tagName === 'SELECT' || !document.getElementById('page').contains(el)) return;
+    const action = actions[el.dataset.action];
+    if (!action) return;
+    const stageEl = el.closest('[data-stage]');
+    const itemEl = el.closest('[data-item]');
+    const stage = stageEl ? findStage(stageEl.dataset.stage) : null;
+    const item = itemEl ? findItem(stage, itemEl.dataset.item) : null;
+    if (el.type === 'checkbox') e.preventDefault(); // state is re-rendered from data
+    action({ stage, item, el });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !switcherPanel.hidden) { closeSwitcher(); switcherToggle.focus(); }
+  });
+
+  // Navigating to #<id> (bookmark or manual edit) opens that checklist
+  window.addEventListener('hashchange', () => {
+    const id = hashId();
+    if (!id || id === checklist.id) return;
+    const c = isValidId(id) && readChecklist(id);
+    if (c) { save(); openChecklist(c); }
+    else { toast('No saved checklist with that ID.', true); setActive(checklist.id); }
+  });
+
+  // Keep in sync when checklists change in another tab
+  window.addEventListener('storage', (e) => {
+    if (e.key === PREFS_KEY && e.newValue) {
+      try { Object.assign(prefs, JSON.parse(e.newValue)); applyPrefs(); } catch (err) { /* ignore */ }
+      return;
+    }
+    if (!e.key || !e.key.startsWith(CHECKLIST_PREFIX)) return;
+    if (e.key === CHECKLIST_PREFIX + checklist.id && e.newValue) {
+      const c = readChecklist(checklist.id);
+      if (c) { checklist = c; render(); }
+    } else {
+      $('#switcherCount').textContent = savedIds().length;
+      if (!switcherPanel.hidden) renderSwitcher();
+    }
+  });
+
+  // Inline-editable checklist title & description (autosaved on every keystroke)
+  function bindEditable(el, key) {
+    el.addEventListener('input', () => {
+      checklist[key] = el.innerText.replace(/\n+$/, '');
+      save();
+      if (key === 'title') document.title = checklist.title || 'Checklists';
+    });
+    el.addEventListener('blur', () => { if (!el.innerText.trim()) el.textContent = ''; });
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (key === 'title' || !e.shiftKey)) { e.preventDefault(); el.blur(); }
+      if (e.key === 'Escape') el.blur();
+    });
+    el.addEventListener('paste', (e) => { // paste as plain text
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+      document.execCommand('insertText', false, key === 'title' ? text.replace(/\s*\n\s*/g, ' ') : text);
+    });
+  }
+  bindEditable(titleEl, 'title');
+  bindEditable(descEl, 'description');
+
+  // Extra safety: flush the open checklist when the tab is hidden or closed
+  window.addEventListener('pagehide', save);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+
+  /* ==================================================================
+     Toast
+     ================================================================== */
+  let toastTimer;
+  function toast(msg, isError = false) {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.className = 'toast toast--visible' + (isError ? ' toast--error' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = 'toast' + (isError ? ' toast--error' : ''); }, 3000);
+  }
+
+  render();
+  scheduleGc(5000); // clean up files left behind by deleted items/checklists
+})();
+</script>
+</body>
+</html>
